@@ -24,3 +24,4 @@ output/fit_svm_0.rds
 
 supervisedLearningProjectBCC_v2_cache/*
 supervisedLearningProjectBCC_v2_files/*
+.Rproj.user

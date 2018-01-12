@@ -2,10 +2,13 @@
 title: "STA5076Z Assignment"
 author: "Blake Cuningham CNNBLA001"
 output:
-  pdf_document:
+  github_document:
     toc: true
     toc_depth: 3
-    number_sections: true
+  # pdf_document:
+    # toc: true
+    # toc_depth: 3
+    # number_sections: true
   html_notebook: default
   html_document: default
  
