@@ -1,0 +1,26 @@
+# Data files
+
+data/mnist_test.csv
+data/mnist_train.csv
+data/properties_2016.csv
+data/train_2016.csv
+data/zillow_data_dictionary.xlsx
+
+# Large objects in output
+
+output/train_pca_model.rds
+output/DRF_model_R_1498407027035_27
+output/train_pca.rds
+output/DRF_model_R_1498402020317_2
+output/test_pca.rds
+output/trainData.rds
+output/train_nozero.rds
+output/DeepLearning_model_R_1498561419260_5
+output/zillow_full.rds
+output/fit_svm_1.rds
+output/fit_svm_0.rds
+
+# Cache files
+
+supervisedLearningProjectBCC_v2_cache/*
+supervisedLearningProjectBCC_v2_files/*

@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1515755282061.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2825183824",
+    "id" : "E6ACED5B",
+    "lastKnownWriteTime" : 1515755817,
+    "last_content_update" : 1515755818084,
+    "path" : "/Volumes/blakecjdl/DataScienceData/SL_Assignment/supervisedLearningProjectBCC_v2.Rmd",
+    "project_path" : "supervisedLearningProjectBCC_v2.Rmd",
+    "properties" : {
+        "cursorPosition" : "7,25",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

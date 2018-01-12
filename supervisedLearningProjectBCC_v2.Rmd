@@ -1,0 +1,1949 @@
+---
+title: "STA5076Z Assignment"
+author: "Blake Cuningham CNNBLA001"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+  html_notebook: default
+  html_document: default
+ 
+bibliography: other/library.bib
+  
+---
+
+
+```{r load_libraries, eval=T, echo=F, message=FALSE}
+rm(list = ls())
+
+list.of.packages <- c("MASS",
+                      "caret",
+                      "leaps",
+                      "e1071",
+                      "lattice",
+                      "randomForest",
+                      "gbm",
+                      "h2o",
+                      "mlbench",
+                      "ggplot2",
+                      "reshape2",
+                      "DEEPR",
+                      "captioner",
+                      "dplyr",
+                      "leaflet",
+                      "knitr",
+                      "stringr",
+                      "DT",
+                      "tidyr",
+                      "corrplot",
+                      "lubridate",
+                      "data.table",
+                      "xtable",
+                      "glmnet",
+                      "broom")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if (length(new.packages)>=1){
+  for (i in 1:length(new.packages)){
+    install.packages(new.packages[i])
+  }  
+}
+
+
+for (i in 1:length(list.of.packages)){
+  suppressWarnings(library(list.of.packages[i], character.only = T))
+}
+
+rm(list = c("i","list.of.packages", "new.packages"))
+
+# setwd("E:\\DataScienceData\\SL_Assignment")
+# setwd("/Volumes/KINGSTON/DataScienceData/SL_Assignment")
+
+
+
+```
+```{r load_data, eval=F, echo=F}
+
+
+load_mnist <- function(path){
+  #load and prepare training data set
+  trainData <<- read.csv(paste0(path, "mnist_train.csv"))
+  
+  trainData <<- subset(trainData,
+                      label == "0" |
+                        label == "1" |
+                        label == "2" |
+                        label == "4" |
+                        label == "7")
+  
+  trainData$label <<- as.factor(trainData$label)
+  
+  #load and prepare test data set
+  testData <<- read.csv(paste0(path, "mnist_test.csv"))
+  
+  testData <<- subset(testData,
+                      label == "0" |
+                        label == "1" |
+                        label == "2" |
+                        label == "4" |
+                        label == "7")
+  
+  testData$label <<- as.factor(testData$label)
+}
+
+# load_mnist("/Users/blakecuningham/Dropbox/MScDataScience/Supervised Learning/project/Q1_MNIST/mnist_data")
+# load_mnist("E:\\MScDataScience\\Supervised Learning\\project\\Q1_MNIST\\mnist_data")
+load_mnist("data/")
+
+saveRDS(testData, file = "output/testData.rds")
+saveRDS(trainData, file = "output/trainData.rds")
+
+rm(list = c("testData", "trainData"))
+
+
+```
+```{r processing, eval=F, echo=F}
+train_nozero <- trainData[,c(label = TRUE, colSums(trainData[,-1]) != 0)]
+test_nozero <- testData[,c(label = TRUE, colSums(trainData[,-1]) != 0)]
+
+train_pca_model <- prcomp(trainData[,-1])
+train_pca <- cbind("label" = trainData$label, data.frame(train_pca_model$x[,1:260]))
+
+test_pca <- data.frame(predict(train_pca_model, testData[,-1]))
+test_pca <- cbind("label" = testData$label, test_pca[,1:260])
+  
+saveRDS(train_nozero, "output/train_nozero.rds")
+saveRDS(test_nozero, "output/test_nozero.rds")
+
+saveRDS(train_pca_model, "output/train_pca_model.rds")
+saveRDS(train_pca, "output/train_pca.rds")
+saveRDS(test_pca, "output/test_pca.rds")
+
+rm(list = c("train_nozero", "test_nozero", "train_pca_model", "train_pca", "test_pca"))
+```
+```{r read_objects, echo=F, eval=T}
+
+testData <- readRDS("output/testData.rds")
+trainData <- readRDS("output/trainData.rds")
+
+train_nozero <- readRDS("output/train_nozero.rds")
+test_nozero <- readRDS("output/test_nozero.rds")
+
+train_pca_model <- readRDS("output/train_pca_model.rds")
+train_pca <- readRDS("output/train_pca.rds")
+test_pca <- readRDS("output/test_pca.rds")
+
+fit_lda_1 <- readRDS("output/fit_lda_1.rds")
+lda_pca_results <- readRDS("output/lda_pca_results.rds")
+fit_lda_2 <- readRDS("output/fit_lda_2.rds")
+qda_pca_results <- readRDS("output/qda_pca_results.rds")
+fit_qda_2 <- readRDS("output/fit_qda_2.rds")
+svm_pca_results <- readRDS("output/svm_pca_results.rds")
+fit_svm_1 <- readRDS("output/fit_svm_1.rds")
+fit_svm_0 <- readRDS("output/fit_svm_0.rds")
+h2o.rf_1.score <- readRDS("output/h2o.rf_1.score.rds")
+h2o.rf_1.train.class <- readRDS("output/h2o.rf_1.train.class.rds")
+h2o.rf_1.test.class <- readRDS("output/h2o.rf_1.test.class.rds")
+h2o.rf_2.score <- readRDS("output/h2o.rf_2.score.rds")
+h2o.rf_2.train.class <- readRDS("output/h2o.rf_2.train.class.rds")
+h2o.rf_2.test.class <- readRDS("output/h2o.rf_2.test.class.rds")
+rf_pca_results <- readRDS("output/rf_pca_results.rds")
+boost_results_table <- readRDS("output/boost_results_table.rds")
+boost.gg.data <- readRDS("output/boost.gg.data.rds")
+h2o.boost.best.score <- readRDS("output/h2o.boost.best.score.rds")
+h2o.boost.best.train.class <- readRDS("output/h2o.boost.best.train.class.rds")
+h2o.boost.best.test.class <- readRDS("output/h2o.boost.best.test.class.rds")
+nn.gg.data <- readRDS("output/nn.gg.data.rds")
+nn_results_table <- readRDS("output/nn_results_table.rds")
+h2o.nn_1.score <- readRDS("output/h2o.nn_1.score.rds")
+h2o.nn_1.train.class <- readRDS("output/h2o.nn_1.train.class.rds")
+h2o.nn_1.test.class <- readRDS("output/h2o.nn_1.test.class.rds")
+overall_results <- readRDS("output/overall_results.rds")
+
+#Zillow
+zillow_full <- readRDS("output/zillow_full.rds")
+zillow_full_small <- readRDS("output/zillow_full_small.rds")
+ztrain <- readRDS("output/ztrain.rds")
+ztest <- readRDS("output/ztest.rds")
+
+fit.ss.f.lin.summary <- readRDS("output/fit.ss.f.lin.summary.rds")
+fit.ss.b.lin.summary <- readRDS("output/fit.ss.b.lin.summary.rds")
+
+h2o.z.rf.predict.train <- readRDS("output/h2o.z.rf.predict.train.rds")
+z.rf.train.mae <- readRDS("output/z.rf.train.mae.rds")
+h2o.z.rf.predict.test <- readRDS("output/h2o.z.rf.predict.test.rds")
+z.rf.test.mae <- readRDS("output/z.rf.test.mae.rds")
+h2o.z.dl.predict.train <- readRDS("output/h2o.z.dl.predict.train.rds")
+z.dl.train.mae <- readRDS("output/z.dl.train.mae.rds")
+h2o.z.dl.predict.test <- readRDS("output/h2o.z.dl.predict.test.rds")
+z.dl.test.mae <- readRDS("output/z.dl.test.mae.rds")
+h2o.z.dl.predict.train_full <- readRDS("output/h2o.z.dl.predict.train_full.rds")
+z.dl.train.full.mae <- readRDS("output/z.dl.train.full.mae.rds")
+h2o.z.dl.predict.test_full <- readRDS("output/h2o.z.dl.predict.test_full.rds")
+z.dl.test.full.mae <- readRDS("output/z.dl.test.full.mae.rds")
+
+overall_results_z <- readRDS("output/overall_results_z.rds")
+
+
+
+```
+```{r initfigs, echo=F, eval=T}
+figs <- captioner(prefix="Figure")
+tbls <- captioner(prefix="Table")
+```
+
+Please note: The bulk of this assignment is focused on question 1. The easy comparability of the data was a good opportunity to explore as many techniques as possible (e.g. grid search, cross-validation, principle component analysis). The challenging nature of the data used for question 2 required a more focused approach.
+
+#Q1: Handwritten digit classification with MNIST data
+
+##Introduction
+
+The MNIST data-set has been widely used to develop and test classification techniques since it was originally made available in 1998 [@LeCun2010]. The original curators of the data-set keep track of classification accuracy on their website: they originally achieved a 99.2% accuracy with SVM, and 99.3% accuracy with a boosted convolutional network, but recent best performance is 99.77% by @Ciresan2012 using a committee of convolutional neural networks.
+
+This project looks at a subset of the data (only considering half of the full 10 digit labels: 0, 1, 2, 4, 7), which means that the results of this work are not directly comparable to the previous research.
+
+###Visualising the data
+
+The data is stored as an entry with 784 fields - one for each pixel of a 28x28 image. Each of these pixels contains a value from 0 to 255 signifying the color gradient. In Figure 1 the first 15 observations in the training data-set are visualized by turning each observation into a matrix. Even from this small sample it can be seen that these are not especially neatly written digits, which makes the challenge even more interesting.
+
+```{r plotnum, echo=F, eval=T}
+rotate <- function(x) t(apply(x, 2, rev))
+plotnum <- function(x){
+  image(
+  rotate(matrix(unlist(trainData[x,-1]),nrow = 28,byrow = T)),
+  col=grey.colors(255),
+  xlab=trainData[x,1],
+  axes = F
+  )
+}
+
+par(mfrow=c(3,5))
+for (i in 1:15){
+  plotnum(i)
+}
+
+```
+
+*`r figs(name="num_images","Visualization of first 15 images in training data")`*
+
+###Approach
+
+Several different classifiers are used in this assignment to produce accurate predictions, but the choice of classifiers available is too large to try all of them. Notably, this assignment does not make use of K-Nearest Neighbors, nor does it make use of logistic regression. The former exclusion is due to potential computational demands, while the latter is based on the recommendation that logistic regression is not used for multiple classes [@James2013].
+
+Within the set of classifiers chosen, there are several different versions that are possible - where appropriate, a grid methodology was used to find the optimal hyper-parameters for these classifiers. Additionally, classifiers were trained with both the raw data, and principal components of the data. The primary goal of using principal components was to attempt to reduce computation time, but there are some interesting cases where it also aids predictive accuracy. The final comparison of these classifiers only considers the optimized version of each (i.e. lowest classification error hyper-parameters and number of principal components).
+
+Note that when using the original non-PCA data for training and test data, the predictor variables (i.e. pixels) that never contain any information (i.e. are always constant at 0) were removed. There were no non-zero constant columns detected.
+
+###Results
+
+The final, and key, results are summarized in Table 1 below. A short description of the results is below the table. In the very next section the major observations from these results are discussed, followed by some concluding remarks. A more detailed discussion of each classifier can be found in the section titled "Analysis details".
+
+*`r tbls(name="overall_results","Summary of main models used to classify MNIST data")`*
+```{r echo=F, eval=T}
+knitr::kable(overall_results, row.names = F)
+```
+
+These results represent the classification accuracy on both the training and test sets of information for each of the main classifiers. More detailed results can be found in the "Analysis details" section. For computationally intensive classifiers, such as boosting, the results shown are based on a limited number of iterations and may not actually reflect the true optimal hyper-parameters. Two primary insights can be drawn from an initial view of the results:
+
+1. More complex non-parametric classifiers were generally more accurate at predicting classes
+2. A small amount of principal components were able to produce one of the most predictive classification models
+
+##Discussion
+
+The best performing classifier was a deep neural network trained using the h2o.deeplearning function available from the h2o package in R. This classifier was trained using the original data (i.e. not principal components), and consisted of two hidden layers each with 400 neurons. The model used the rectifier activation function, which has been known to work well for image data. Additionally, the model had an input dropout ratio of 0.2, and hidden layer dropout ratios of 0.5 for both. The model achieved the best accuracy after ~30 epochs. It's possible that a far better neural network could be chosen, but it seems likely that a rectifier activation function and more than one hidden layer would be key features. No neural network was fitted with the PCA training data, so it is unclear whether or not this would be advantageous to predictive accuracy.
+
+Surprisingly, the next best classifier was SVM with just 59 principal components. This SVM used a radial kernel, with a gamma of ~0.017 (the default parameter value defined by $1 / (dimension)$). While it is not surprising that SVM performed well, the improved accuracy using PCA instead of the original data shows that despite there being 784 predictor variables, less than a tenth of that number contains the same (or more) information in PCA form. In Figure 4 one can already see quite clear separation between different classes based on just the first two principal components, which enables the SVM and kernel to construct highly predictive hyper-planes.
+
+The worst performing classifier by a considerable distance was Linear Discriminant Analysis (LDA). This was expected given the non-linear qualities of the data, and the likelihood that co-variance matrices between classes would not be identical (QDA performed significantly better, demonstrating the need to allow differing co-variances). However, this simple classifier did demonstrate the trade-off between bias and variance by actually having a better accuracy with the test data than with the training data. The LDA trained with the PCA data performed better, which is to be expected since PCA helps to make the classes more linearly separable. 
+
+Boosting performance is arguably inconclusive. Firstly, it was only trained with PCA data, but we can see that the related Random Forest approach performed better with the original data. Secondly, the amount of time needed to train a boosting model (compounded by a grid search, and cross-validation) limited the amount of trees used to 1000. Hence, the best performing boosting model had an interaction depth of 3 (the highest option) and a learning rate of 0.02 (the highest option). It is possible than one, or all, of the others may outperform this version (and potentially the other classifiers) given a much larger amount of trees (and the original training data).
+
+Please see "Analysis details" for additional comments and justifications on model choice (including PCA choices).
+
+##Conclusion
+
+The primary conclusion of the analysis points towards more complex non-parametric approaches having better predictive accuracy with this particular data-set. The relatively simple neural network used here suggests that further investigation of these kinds of models could improve predictive accuracy. Indeed, the best performing models in the literature are convolutional neural networks.
+
+It is also recommended that more work is done to investigate boosting models, specifically by fitting with more trees (orders of magnitude more than 1000). Additionally, these boosting models should consider the original image data, and not principal components.
+
+Finally, further improvements in the training of these models may include adding artificially distorted versions of the training data. In @Nielsen2015 it is suggested that images are rotated by an arbitrary amount, and then added to the training data - this would enable models to more robustly recognize digits even if they were presented at an angle. Furthermore, @James2013 were able to improve predictive accuracy by up to 0.5% by including versions of the training data that were "elastically distorted" in order to add more real world variation.
+
+##Analysis details
+###Identifying appropriate number of principal components
+
+As explained in @James2013,
+
+>When faced with a large set of correlated variables, principal components allow us to summarize this set with a smaller number of representative variables that collectively explain most of the variability in the original set.
+
+Hence, using this transformation of the data it is expected that it was possible to predict classes at a similar performance level as the original data, but with less computational requirements. Additionally, principal components may "lead to less noisy results" [@James2013] which could therefore help to improve the predictive accuracy of our models above training with the original data.
+
+As seen in Figure 2, the first few principal components account for much larger amounts of variance than those ranked lower. If this plot were to be plotted cumulatively, the effect would be even more drastic. The question is "how many principal components to use?". We need enough in order to capture all the "signal" in the data, but not too much that we start capturing an impactful amount of "noise".
+
+Again, to quote @James2013,
+
+>Unfortunately, there is no well-accepted objective way to decide how many principal components are enough.
+
+```{r, echo=F, fig.height=3, fig.width=6}
+# plot(train_pca_model$sdev / sum(train_pca_model$sdev), main = "Proportion of principal component variance", ylab = "Proportion of total variance", xlab = "principal component", type = "l")
+
+data.frame(linedata = train_pca_model$sdev / sum(train_pca_model$sdev), index = 1:length(train_pca_model$sdev)) %>%
+ggplot(aes(x = index, y = linedata))+
+  geom_line()+
+  scale_y_continuous(name = "Proportion of total variance")+
+  scale_x_continuous(name = "Principal component")+
+  labs(title = "Proportion of principal component variance")+
+  theme_light()
+
+```
+
+*`r figs(name="PCA_var","Proportion of variance explained by components")`*
+
+It is often suggested to look for the "elbow" in the data by just "eye-balling" it in order to find where principal components turn from explaining a decent amount of variance to little variance. This assignment proposes a method identifying the second derivative of the amount of variance explained by each principal component. The justification is as follows:
+
+* The first derivative would explain the slope of Figure 2 (which is always negative), but we are more interested in where the slope changes significantly.
+* The second derivative would explain the rate of change of the slope, and the highest second derivatives would indicate where the rate of change of the slope was maximized. This is chosen as a proxy for the "elbow".
+
+Since we are also interested in reducing the amount of principal components for computational reasons, only the first 250 principal components are considered for this analysis. Figure 3 shows the top 4 candidates for these "elbow" points.
+
+```{r pcaID, echo=F, fig.height=3, fig.width=6}
+
+diffpcax1 <- rep(0, times = (length(train_pca_model$sdev) - 1))
+
+for (i in 2:length(train_pca_model$sdev)){
+    diffpcax1[i-1]<- (train_pca_model$sdev[i] - train_pca_model$sdev[i -1]) / train_pca_model$sdev[i - 1]
+}
+
+diffpcax2 <- rep(0, times = (length(diffpcax1) - 1))
+
+for (i in 2:length(diffpcax1)){
+    diffpcax2[i-1]<- (diffpcax1[i] - diffpcax1[i -1]) / diffpcax1[i - 1]
+}
+
+pca2diff.rank <- order(as.data.frame(abs(diffpcax2))[1:250,1], decreasing = T)
+
+# # par(mfrow = c(3,1))
+# plot(abs(diffpcax2[1:250]), main = "Second derivative of principal components", ylab = "2nd derivative of standard dev.", xlab = "principal component number")
+# abline(v = pca2diff.rank[1], lty = 2, col = "darkblue")
+# text(pca2diff.rank[1], 100, paste0(" PC: ", pca2diff.rank[1]+2), adj = 0, col = "darkblue")
+# abline(v = pca2diff.rank[2], lty = 2, col = "darkblue")
+# text(pca2diff.rank[2], 100, paste0(" PC: ", pca2diff.rank[2]+2), adj = 0, col = "darkblue")
+# abline(v = pca2diff.rank[3], lty = 2, col = "darkblue")
+# text(pca2diff.rank[3], 100, paste0(" PC: ", pca2diff.rank[3]+2), adj = 0, col = "darkblue")
+# abline(v = pca2diff.rank[4], lty = 2, col = "darkblue")
+# text(pca2diff.rank[4], 100, paste0(" PC: ", pca2diff.rank[4]+2), adj = 0, col = "darkblue")
+
+data.frame(seconddiff = abs(diffpcax2[1:250]), index = 1:250) %>%
+ggplot()+
+  geom_point(aes(x = index, y = seconddiff), size = 5, shape = 1)+
+  geom_vline(xintercept = pca2diff.rank[1], color = 2, size = 0.5, linetype = "dashed")+
+  annotate("text", x = pca2diff.rank[1], y = 100, label = paste0(" PC: ", pca2diff.rank[1]+2), hjust = 0)+
+  geom_vline(xintercept = pca2diff.rank[2], color = 2, size = 0.5, linetype = "dashed")+
+  annotate("text", x = pca2diff.rank[2], y = 100, label = paste0(" PC: ", pca2diff.rank[2]+2), hjust = 0)+
+  geom_vline(xintercept = pca2diff.rank[3], color = 2, size = 0.5, linetype = "dashed")+
+  annotate("text", x = pca2diff.rank[3], y = 100, label = paste0(" PC: ", pca2diff.rank[3]+2), hjust = 0)+
+  geom_vline(xintercept = pca2diff.rank[4], color = 2, size = 0.5, linetype = "dashed")+
+  annotate("text", x = pca2diff.rank[4], y = 100, label = paste0(" PC: ", pca2diff.rank[4]+2), hjust = 0)+
+  scale_y_continuous(name = "2nd derivative of standard dev.")+
+  scale_x_continuous(name = "Principal component number")+
+  labs(title="Second derivative of principal components")+
+  theme_light()
+  
+
+# plot(abs(diffpcax1[1:200]))
+# abline(v = pca2diff.rank[1]+1, lty = 2)
+# abline(v = pca2diff.rank[2]+1, lty = 2)
+# abline(v = pca2diff.rank[3]+1, lty = 2)
+# abline(v = pca2diff.rank[4]+1, lty = 2)
+# 
+# plot(abs(train_pca_model$sdev[1:200]))
+# abline(v = pca2diff.rank[1]+2, lty = 2)
+# abline(v = pca2diff.rank[2]+2, lty = 2)
+# abline(v = pca2diff.rank[3]+2, lty = 2)
+# abline(v = pca2diff.rank[4]+2, lty = 2)
+
+```
+
+*`r figs(name="PCA_elbow","Selecting potential PCA elbow points via 2nd derivative of variance")`*
+
+These principal component points will be used in model fitting to identify which amount of components is optimal for the classifier (as opposed to testing the full amount of principal components on an incremental basis, which would not be useful for reducing the computational burden).
+
+In order to visualize the idea behind principal components in the MNIST data-set, Figure 4 demonstrates how just the first 2 components are able to demonstrate quite clear clusters of the categories in a 2-dimensional space. This shows how relatively few principal components could help us predict classes.
+
+```{r pca_plot_color, echo=F, eval=T}
+
+ggplot()+
+  geom_point(data = train_pca, aes(x = PC1, y = PC2, colour = label)) +
+  scale_color_discrete(name = "Label")+
+  labs(title = "First two principal components of training data") +
+  theme_light()
+
+```
+
+*`r figs(name="PCA_plot_color","Category separation by first two principal components of training data")`*
+
+###LDA without PCA
+```{r lda_1_fit, echo=F, eval=F}
+
+#fit the model with the training data
+fit_lda_1 <- lda(label~., data = train_nozero)
+
+saveRDS(fit_lda_1, "output/fit_lda_1.rds")
+rm(fit_lda_1)
+```
+```{r lda_1_results, echo=F, eval = T, cache=T}
+#look at training data fit
+lda_1.train.pred <- predict(fit_lda_1)
+lda_1.train.class <- lda_1.train.pred$class
+# table(ldafit1.class, trainData11$label
+lda_1.train.acc <- mean(lda_1.train.class == train_nozero$label)
+
+#look at test data fit
+lda_1.test.pred <- predict(fit_lda_1, test_nozero)
+lda_1.test.class <- lda_1.test.pred$class
+lda_1.test.acc <- mean(lda_1.test.class == test_nozero$label)
+
+lda_1.train.conf <- confusionMatrix(lda_1.train.class, train_nozero$label)
+lda_1.test.conf <- confusionMatrix(lda_1.test.class, test_nozero$label)
+```
+
+The first classifier used is Linear Discriminant Analysis (LDA). This is the simplest classifier. Using the non-PCA data the training classification error was `r sprintf("%.2f%%", 100*lda_1.train.conf$overall[[1]])`. 
+
+*`r tbls(name="LDA1_train_conf","Confusion matrix of LDA model on training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(lda_1.train.conf$table))
+```
+
+The test classification error was `r sprintf("%.2f%%", 100*lda_1.test.conf$overall[[1]])`. This was the least accurate classifier of all those tried.
+
+*`r tbls(name="LDA1_test_conf","Confusion matrix of LDA model on test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(lda_1.test.conf$table))
+```
+
+###LDA with PCA
+```{r lda_pca_fit, echo=F, eval=F}
+#try different PCAs
+
+pca_list <- c(10, 59, 83, 186)
+lda_pca_results <- data.frame("Train_acc" = rep(0, 4), "Test_acc" = rep(0, 4), row.names = pca_list)
+
+for (i in pca_list){
+  fit_lda_pca <- lda(label~., data = train_pca[,1:i])
+  lda_pca.train.pred <- predict(fit_lda_pca)
+  lda_pca.train.class <- lda_pca.train.pred$class
+  lda_pca.train.acc <- mean(lda_pca.train.class == train_pca$label)
+  
+  lda_pca.test.pred <- predict(fit_lda_pca, test_pca[,1:i])
+  lda_pca.test.class <- lda_pca.test.pred$class
+  lda_pca.test.acc <- mean(lda_pca.test.class == test_pca$label)
+  
+  lda_pca_results[paste0(i),] <- c(round(lda_pca.train.acc*100,2), round(lda_pca.test.acc*100,2))
+}
+
+saveRDS(lda_pca_results, "output/lda_pca_results.rds")
+rm(lda_pca_results)
+```
+
+In order to classify the data using the PCA training data, all the elbow points were tried:
+
+*`r tbls(name="LDA_pca_opt", "Optimal number of principal components for LDA model")`*
+```{r echo=F, eval=T}
+names(lda_pca_results) <- c("Training accuracy", "Test accuracy")
+knitr::kable(lda_pca_results)
+```
+```{r lda_2_fit, echo=F, eval=F}
+#fit the model with the training data
+fit_lda_2 <- lda(label~., data = train_pca[,1:186])
+
+saveRDS(fit_lda_2, "output/fit_lda_2.rds")
+rm(fit_lda_2)
+```
+```{r lda_2_results, echo=F, eval = T, cache=T}
+#look at training data fit
+lda_2.train.pred <- predict(fit_lda_2)
+lda_2.train.class <- lda_2.train.pred$class
+# table(ldafit1.class, trainData11$label
+lda_2.train.acc <- mean(lda_2.train.class == train_nozero$label)
+
+#look at test data fit
+lda_2.test.pred <- predict(fit_lda_2, test_pca[,1:186])
+lda_2.test.class <- lda_2.test.pred$class
+lda_2.test.acc <- mean(lda_2.test.class == test_pca$label)
+
+lda_2.train.conf <- confusionMatrix(lda_2.train.class, train_pca$label)
+lda_2.test.conf <- confusionMatrix(lda_2.test.class, test_pca$label)
+```
+
+The optimal amount of principal components was 186 which has a training accuracy of `r sprintf("%.2f%%", 100*lda_2.train.conf$overall[[1]])`.
+
+*`r tbls(name="LDA2_train_conf","Confusion matrix of LDA model on training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(lda_2.train.conf$table))
+```
+
+The test accuracy was `r sprintf("%.2f%%", 100*lda_2.test.conf$overall[[1]])`. This is a small 0.3% improvement over the non-PCA data. Also, interestingly, the test accuracy is better than the training accuracy suggesting low variance for this classifier.
+
+*`r tbls(name="LDA2_test_conf","Confusion matrix of LDA model on test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(lda_2.test.conf$table))
+```
+
+###QDA with PCA
+
+QDA was not able to fit a model based on the raw data, even after the zero-only variables were removed. Because of this, QDA was only investigated with the principal component data. Again, the optimal amount of principal components was investigated:
+```{r qda_pca_fit, echo=F, eval=F}
+#try different PCAs
+
+pca_list <- c(10, 59, 83, 186)
+qda_pca_results <- data.frame("Train_acc" = rep(0, 4), "Test_acc" = rep(0, 4), row.names = pca_list)
+
+for (i in pca_list){
+  fit_qda_pca <- qda(label~., data = train_pca[,1:i])
+  qda_pca.train.pred <- predict(fit_qda_pca)
+  qda_pca.train.class <- qda_pca.train.pred$class
+  qda_pca.train.acc <- mean(qda_pca.train.class == train_pca$label)
+  
+  qda_pca.test.pred <- predict(fit_qda_pca, test_pca[,1:i])
+  qda_pca.test.class <- qda_pca.test.pred$class
+  qda_pca.test.acc <- mean(qda_pca.test.class == test_pca$label)
+  
+  qda_pca_results[paste0(i),] <- c(round(qda_pca.train.acc*100,2), round(qda_pca.test.acc*100,2))
+}
+
+saveRDS(qda_pca_results, "output/qda_pca_results.rds")
+rm(qda_pca_results)
+```
+
+*`r tbls(name="QDA_pca_opt", "Optimal number of principal components for QDA model")`*
+```{r echo=F, eval=T}
+names(qda_pca_results) <- c("Training accuracy", "Test accuracy")
+knitr::kable(qda_pca_results)
+```
+```{r qda_2_fit, echo=F, eval=F}
+#fit the model with the training data
+fit_qda_2 <- qda(label~., data = train_pca[,1:59])
+
+saveRDS(fit_qda_2, "output/fit_qda_2.rds")
+rm(fit_qda_2)
+```
+```{r qda_2_results, echo=F, eval = T, cache=T}
+#look at training data fit
+qda_2.train.pred <- predict(fit_qda_2)
+qda_2.train.class <- qda_2.train.pred$class
+# table(ldafit1.class, trainData11$label
+qda_2.train.acc <- mean(qda_2.train.class == train_pca$label)
+
+#look at test data fit
+qda_2.test.pred <- predict(fit_qda_2, test_pca[,1:59])
+qda_2.test.class <- qda_2.test.pred$class
+qda_2.test.acc <- mean(qda_2.test.class == test_pca$label)
+
+qda_2.train.conf <- confusionMatrix(qda_2.train.class, train_pca$label)
+qda_2.test.conf <- confusionMatrix(qda_2.test.class, test_pca$label)
+```
+
+The optimal amount of components was 59, with a training classification accuracy of `r sprintf("%.2f%%", 100*qda_2.train.conf$overall[[1]])`.
+
+*`r tbls(name="QDA2_train_conf","Confusion matrix of QDA model on training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(qda_2.train.conf$table))
+```
+
+The test classification accuracy was `r sprintf("%.2f%%", 100*qda_2.test.conf$overall[[1]])`. Again, this was better than the training accuracy which indicates low variance of the classifier. The accuracy is better than both LDA models, and a random forest approach trained on principal components.
+
+*`r tbls(name="QDA2_test_conf","Confusion matrix of LDA model on test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(qda_2.test.conf$table))
+```
+
+###Random forest without PCA
+```{r h2o.rf_1_fit, echo=F, eval=F}
+#fit the model with the training data
+
+localH2O = h2o.init(ip = "localhost", port = 54321, startH2O = TRUE, min_mem_size = "2g", max_mem_size = "3g", nthreads = -1)
+
+h2o.train_nozero <- as.h2o(train_nozero)
+h2o.test_nozero <- as.h2o(test_nozero)
+
+h2o.rf_1 <- h2o.randomForest(x = 2:ncol(train_nozero),
+                             y = 1,
+                             training_frame = h2o.train_nozero,
+                             validation_frame = h2o.test_nozero,
+                             ntrees = 200,
+                             min_rows = 3)
+
+h2o.performance(h2o.rf_1)
+
+h2o.rf_1.path <- h2o.saveModel(h2o.rf_1, path = "/Volumes/KINGSTON/DataScienceData/SL_Assignment", force = T)
+# "/Volumes/KINGSTON/DataScienceData/SL_Assignment/DRF_model_R_1498402020317_2"
+
+h2o.rf_1.score <-  data.frame("Train error" = h2o.rf_1@model$scoring_history$training_classification_error,
+                              "Test error" = h2o.rf_1@model$scoring_history$validation_classification_error,
+                              "Num trees" = h2o.rf_1@model$scoring_history$number_of_trees)
+
+# plot(h2o.rf_1.score$Num.trees, h2o.rf_1.score$Train.error)
+# abline(h = mean(h2o.rf_1.score$Train.error[(length(h2o.rf_1.score$Train.error) - 10):length(h2o.rf_1.score$Train.error)]), col = "blue")
+
+h2o.rf_1.train.class <- as.data.frame(h2o.predict(h2o.rf_1, h2o.train_nozero)$predict)
+h2o.rf_1.test.class <- as.data.frame(h2o.predict(h2o.rf_1, h2o.test_nozero)$predict)
+
+h2o.shutdown(FALSE)
+
+saveRDS(h2o.rf_1.score, "output/h2o.rf_1.score.rds")
+saveRDS(h2o.rf_1.train.class, "output/h2o.rf_1.train.class.rds")
+saveRDS(h2o.rf_1.test.class, "output/h2o.rf_1.test.class.rds")
+
+rm(list = c("h2o.rf_1.score", "h2o.rf_1.train.class", "h2o.rf_1.test.class"))
+```
+```{r h2o.rf_1_results, echo=F, eval = T, cache=T}
+#look at training data fit
+# svm_0.train.class <- predict(fit_svm_0)
+# svm_1.train.class <- svm_1.train.pred$class
+# table(ldafit1.class, trainData11$label
+h2o.rf_1.train.acc <- mean(h2o.rf_1.train.class$predict == train_nozero$label)
+
+#look at test data fit
+# svm_0.test.class <- predict(fit_svm_0, test_nozero)
+# svm_1.test.class <- svm_1.test.pred$class
+h2o.rf_1.test.acc <- mean(h2o.rf_1.test.class$predict == test_nozero$label)
+
+h2o.rf_1.train.conf <- confusionMatrix(h2o.rf_1.train.class$predict, train_nozero$label)
+h2o.rf_1.test.conf <- confusionMatrix(h2o.rf_1.test.class$predict, test_nozero$label)
+```
+
+A basic random forest approach was trained using the default number of variables tried at each split (approximately the square root of the amount of predictors). In order to speed up computational time, only 200 trees were allowed but it is possible that more trees would have further improved test performance given the large difference found between training and test accuracy.
+
+The training classification accuracy was very high at `r sprintf("%.2f%%", 100*h2o.rf_1.train.conf$overall[[1]])`, with 0 being the easiest to classify, and 7 being the most difficult.
+
+*`r tbls(name="h2o.rf_1_train_conf","Confusion matrix of random forest model on training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.rf_1.train.conf$table))
+```
+
+However, test accuracy was just `r sprintf("%.2f%%", 100*h2o.rf_1.test.conf$overall[[1]])`, which is high but may be higher if more trees were used in model.
+
+*`r tbls(name="h2o.rf_1_test_conf","Confusion matrix of random forest model on test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.rf_1.test.conf$table))
+```
+
+However, looking at the classification error plotted against the number of trees it doesn't seem clear that more trees would be helpful as test error seems to have minimized at around 100 trees. Perhaps more versions with differing minimum leaf amounts, or different amounts of variables allowed at each split, could have yielded a better classifier.
+
+```{r rf_1_trees, eval=T, echo=F}
+suppressWarnings(
+  ggplot() +
+    geom_line(data = h2o.rf_1.score, aes(x = Num.trees, y = Train.error, colour = "Training error"), na.rm = T) +
+    geom_line(data = h2o.rf_1.score, aes(x = Num.trees, y = Test.error, colour = "Test error"), na.rm = T) +
+    scale_color_discrete(name = "Legend") +
+    labs(title = "Error vs. number of trees for unprocessed data")+
+    scale_y_continuous(name = "Classification error")+
+    scale_x_continuous(name = "Number of trees")+
+    theme_light()
+  )
+
+```
+*`r figs(name="rf_1_trees", "Decline in classification error with number of trees")`*
+
+###Random forest with PCA
+```{r h2o.rf_2_fit, echo=F, eval=F}
+#fit the model with the training data
+
+localH2O = h2o.init(ip = "localhost", port = 54321, startH2O = TRUE, min_mem_size = "2g", max_mem_size = "3g", nthreads = -1)
+
+h2o.train_pca <- as.h2o(train_pca)
+h2o.test_pca <- as.h2o(test_pca)
+
+pca_list <- c(10, 59, 83, 186)
+rf_pca_results <- data.frame("Train_acc" = rep(0, length(pca_list)), "Test_acc" = rep(0, length(pca_list)), row.names = pca_list)
+
+for (i in pca_list){
+  h2o.rf_2.pcacheck <- h2o.randomForest(x = 2:(i+1),
+                                      y = 1,
+                                      training_frame = h2o.train_pca,
+                                      validation_frame = h2o.test_pca,
+                                      ntrees = 200,
+                                      min_rows = 3)
+  
+  rf_train <- 1 - h2o.mean_per_class_error(h2o.rf_2.pcacheck, train = T)
+  rf_test <- 1 - h2o.mean_per_class_error(h2o.rf_2.pcacheck, valid = T)
+  
+  rf_pca_results[paste0(i),] <- c(round(rf_train*100,2), round(rf_test*100,2))
+}
+
+saveRDS(rf_pca_results, "output/rf_pca_results.rds")
+
+# h2o.performance(h2o.rf_2.pcacheck)
+# plot(h2o.rf_2.pcacheck@model$variable_importances$percentage)
+# h2o.rf_2.pcacheck@model$training_metrics@metrics$MSE
+
+#59 PC's gives the best classification rate
+h2o.rf_2 <- h2o.randomForest(x = 2:(59+1),
+                             y = 1,
+                             training_frame = h2o.train_pca,
+                             validation_frame = h2o.test_pca,
+                             ntrees = 500,
+                             min_rows = 3)
+
+# h2o.performance(h2o.rf_2)
+
+# plot(h2o.rf_2@model$scoring_history$number_of_trees, h2o.rf_2@model$scoring_history$training_classification_error, type = "l")
+# 
+# h2o.rf_2@model$training_metrics@metrics$r2
+# 1 - h2o.mean_per_class_error(h2o.rf_2, valid = T)
+
+h2o.rf_2.path <- h2o.saveModel(h2o.rf_2, path = "/Volumes/KINGSTON/DataScienceData/SL_Assignment", force = T)
+# "/Volumes/KINGSTON/DataScienceData/SL_Assignment/DRF_model_R_1498407027035_27"
+
+h2o.rf_2.score <-  data.frame("Train error" = h2o.rf_2@model$scoring_history$training_classification_error,
+                              "Test error" = h2o.rf_2@model$scoring_history$validation_classification_error,
+                              "Num trees" = h2o.rf_2@model$scoring_history$number_of_trees)
+
+# plot(h2o.rf_1.score$Num.trees, h2o.rf_1.score$Train.error)
+# abline(h = mean(h2o.rf_1.score$Train.error[(length(h2o.rf_1.score$Train.error) - 10):length(h2o.rf_1.score$Train.error)]), col = "blue")
+
+h2o.rf_2.train.class <- as.data.frame(h2o.predict(h2o.rf_2, h2o.train_pca)$predict)
+h2o.rf_2.test.class <- as.data.frame(h2o.predict(h2o.rf_2, h2o.test_pca)$predict)
+
+h2o.shutdown(FALSE)
+
+saveRDS(h2o.rf_2.score, "output/h2o.rf_2.score.rds")
+saveRDS(h2o.rf_2.train.class, "output/h2o.rf_2.train.class.rds")
+saveRDS(h2o.rf_2.test.class, "output/h2o.rf_2.test.class.rds")
+
+rm(list = c("h2o.rf_2.score", "h2o.rf_2.train.class", "h2o.rf_2.test.class", "rf_pca_results"))
+```
+
+Looking at the optimal amount of principal components for the random forest model, again 59 components is optimal:
+
+*`r tbls(name="RF_pca_opt", "Optimal number of principal components for random forest model")`*
+```{r echo=F, eval=T}
+names(rf_pca_results) <- c("Training accuracy", "Test accuracy")
+knitr::kable(rf_pca_results)
+```
+```{r h2o.rf_2_results, echo=F, eval = T, cache=T}
+#look at training data fit
+# svm_0.train.class <- predict(fit_svm_0)
+# svm_1.train.class <- svm_1.train.pred$class
+# table(ldafit1.class, trainData11$label
+h2o.rf_2.train.acc <- mean(h2o.rf_2.train.class$predict == train_pca$label)
+
+#look at test data fit
+# svm_0.test.class <- predict(fit_svm_0, test_nozero)
+# svm_1.test.class <- svm_1.test.pred$class
+h2o.rf_2.test.acc <- mean(h2o.rf_2.test.class$predict == test_pca$label)
+
+h2o.rf_2.train.conf <- confusionMatrix(h2o.rf_2.train.class$predict, train_pca$label)
+h2o.rf_2.test.conf <- confusionMatrix(h2o.rf_2.test.class$predict, test_pca$label)
+```
+
+Training accuracy increases up to `r sprintf("%.2f%%", 100*h2o.rf_2.train.conf$overall[[1]])` when using 500 trees.
+
+*`r tbls(name="h2o.rf_2_train_conf","Confusion matrix of random forest model on principal component training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.rf_2.train.conf$table))
+```
+
+But, test classification accuracy of `r sprintf("%.2f%%", 100*h2o.rf_2.test.conf$overall[[1]])` is significantly lower indicating that the random forest is over-fitting to the training data.
+
+*`r tbls(name="h2o.rf_2_test_conf","Confusion matrix of random forest model on principal component test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.rf_2.test.conf$table))
+```
+
+The optimal number of trees is quite low - there does not seem to be any significant improvement beyond approximately 40 trees.
+
+```{r rf_2_trees, eval=T, echo=F}
+suppressWarnings(
+  ggplot() +
+    geom_line(data = h2o.rf_2.score, aes(x = Num.trees, y = Train.error, colour = "Training error"), na.rm = T) +
+    geom_line(data = h2o.rf_2.score, aes(x = Num.trees, y = Test.error, colour = "Test error"), na.rm = T) +
+    scale_color_discrete(name = "Legend") +
+    labs(title = "Error vs. number of trees for 59 PCA Random Forest")+
+    scale_y_continuous(name = "Classification error")+
+    scale_x_continuous(name = "Number of trees")+
+    theme_light()
+  )
+
+```
+*`r figs(name="rf_2_trees", "Decline in classification error with number of trees")`*
+
+Random Forest classification appears to perform better on the original data than with PCA data. This is likely due to a random forest being able to identify the most important variables quite quickly without the need for PCA. In fact, PCA may hinder a random forest as too much information may be contained in certain components - randomly leaving these components out in trees could be detrimental. A bagging approach may therefore perform better (not tried in this assignment).
+
+###Boosting with PCA
+```{r h2o.boost_1_fit, echo=F, eval=F}
+#fit the model with the training data
+
+localH2O = h2o.init(ip = "localhost", port = 54321, startH2O = TRUE, min_mem_size = "2g", max_mem_size = "4g", nthreads = -1)
+
+h2o.train_pca <- as.h2o(train_pca)
+h2o.test_pca <- as.h2o(test_pca)
+
+learn_rate_opt <- c(0.02, 0.01, 0.005, 0.001)
+max_depth_opt <- c(1,2,3)
+hyper_params <- list(learn_rate = learn_rate_opt, max_depth = max_depth_opt)
+
+h2o.boost.grid <- h2o.grid("gbm",
+                           hyper_params = hyper_params,
+                           x = 2:(59+1),
+                           y = 1,
+                           training_frame = h2o.train_pca,
+                           validation_frame = h2o.test_pca,
+                           ntrees = 1000,
+                           nfolds = 4,
+                           distribution = "multinomial"
+                           )
+
+h2o.boost.grid@summary_table
+  
+boost_mod_list <- h2o.boost.grid@model_ids
+n <- length(boost_mod_list)
+boost_results_table <- data.frame(max_depth = integer(n), learn_rate = double(n), mean_class_error_train = double(n), mean_class_error_cv = double(n), mean_class_error_test = double(n))
+boost.gg.data <- data.frame(boosttrees = double(), classerror = double(), col_input = character())
+# boost_plot <- ggplot()
+
+for (i in 1:n){
+  x_mod <- h2o.getModel(h2o.boost.grid@model_ids[[i]])
+  
+  #create results table
+  boost_results_table$max_depth[i] <- x_mod@parameters$max_depth
+  boost_results_table$learn_rate[i] <- x_mod@parameters$learn_rate
+  boost_results_table$mean_class_error_train[i] <- x_mod@model$training_metrics@metrics$mean_per_class_error
+  boost_results_table$mean_class_error_cv[i] <- x_mod@model$cross_validation_metrics@metrics$mean_per_class_error
+  boost_results_table$mean_class_error_test[i] <- x_mod@model$validation_metrics@metrics$mean_per_class_error
+  
+  #create comparison chart elements
+  gg.data <- data.frame(boosttrees = x_mod@model$scoring_history$number_of_trees[-1], classerror = x_mod@model$scoring_history$validation_classification_error[-1], col_input = paste0("Depth: ", x_mod@parameters$max_depth, "; Learn rate: ", x_mod@parameters$learn_rate))
+  boost.gg.data <- rbind(boost.gg.data, gg.data)
+  
+}
+
+# ggplot()+
+#   geom_line(data = gg.data.main, aes(x = boosttrees, y = classerror, colour = col_input))+
+#   scale_color_discrete(name="Parameters")
+
+saveRDS(boost.gg.data, "output/boost.gg.data.rds")
+saveRDS(boost_results_table, "output/boost_results_table.rds")
+
+h2o.boost.best <- h2o.getModel(h2o.boost.grid@model_ids[[1]])
+
+# h2o.boost_1 <- h2o.gbm(x = 2:(59+1),
+#                       y = 1,
+#                       training_frame = h2o.train_pca, # data in H2O format
+#                       validation_frame = h2o.test_pca,
+#                       ntrees = 1000,
+#                       max_depth = 2,
+#                       learn_rate = 0.01,
+#                       nfolds = 4
+#                       distribution = "multinomial") # max. no. of epochs
+
+
+# h2o.performance(h2o.boost.best)
+
+# plot(h2o.rf_2@model$scoring_history$number_of_trees, h2o.rf_2@model$scoring_history$training_classification_error, type = "l")
+# 
+# h2o.rf_2@model$training_metrics@metrics$r2
+# 1 - h2o.mean_per_class_error(h2o.rf_2, valid = T)
+
+h2o.boost.best.path <- h2o.saveModel(h2o.boost.best, path = "/Volumes/KINGSTON/DataScienceData/SL_Assignment", force = T)
+# "/Volumes/KINGSTON/DataScienceData/SL_Assignment/Grid_GBM_train_pca_model_R_1498484951207_1_model_8"
+
+h2o.boost.best.score <-  data.frame("Train error" = h2o.boost.best@model$scoring_history$training_classification_error,
+                              "Test error" = h2o.boost.best@model$scoring_history$validation_classification_error,
+                              "Num trees" = h2o.boost.best@model$scoring_history$number_of_trees)
+
+# plot(h2o.rf_1.score$Num.trees, h2o.rf_1.score$Train.error)
+# abline(h = mean(h2o.rf_1.score$Train.error[(length(h2o.rf_1.score$Train.error) - 10):length(h2o.rf_1.score$Train.error)]), col = "blue")
+
+h2o.boost.best.train.class <- as.data.frame(h2o.predict(h2o.boost.best, h2o.train_pca)$predict)
+h2o.boost.best.test.class <- as.data.frame(h2o.predict(h2o.boost.best, h2o.test_pca)$predict)
+
+h2o.shutdown(FALSE)
+
+saveRDS(h2o.boost.best.score, "output/h2o.boost.best.score.rds")
+saveRDS(h2o.boost.best.train.class, "output/h2o.boost.best.train.class.rds")
+saveRDS(h2o.boost.best.test.class, "output/h2o.boost.best.test.class.rds")
+
+```
+
+One potential method to improve on random forest, is boosting. The method has several similarities to random forest, but the algorithm uses the error of trees to learn and build sequential trees. Because this method takes this sequential approach, it is difficult to perform it in parallel, and it can take a long time to compute. For these reasons, only PCA data was used - at the 59 PCA level because this was found to be best for random forest, and because it is relatively few which would further aid computation.
+
+In order to find the hyper-parameters for an optimal boosting model, a grid approach was taken in order to consider two key parameters:
+
+* Interaction depth
+* Learning rate
+
+Other parameters were left as default (e.g. minimum observations per leaf at 10), and the number of trees was set at 1000 only. For cross-validation, 4 folds were selected. The results of the grid search can be seen in Table 15. In general, the CV error was quite close to the actual test data error indicating that it would have been adequate if we did not have the test data available. The best performing model has an interaction depth of 3, and a learning rate of 0.02, which are both the maximum out of the two parameters.
+
+*`r tbls(name="boost_grid", "Ordered results of grid search for optimal boosting model")`*
+```{r, echo=F, eval=T}
+names(boost_results_table) <- c("Depth", "Learning rate", "Training error", "CV error (4 fold)", "Test set error")
+knitr::kable(round(boost_results_table, 3))
+
+```
+
+Figure 7 compares the test error vs. number of trees for all the models. We can see the best performing model has the lowest error at 1000 trees, but all models are still decreasing at this point meaning that more trees are needed in order to confirm the optimal parameters. Because the optimal model at 1000 trees had the highest learning rate, and the largest interaction depth, it seems likely that a different model would actually perform better at a 10 000 or 100 000 tree mark.
+
+```{r, echo=F, eval=T}
+
+ggplot()+
+  geom_line(data = boost.gg.data, aes(x = boosttrees, y = classerror, colour = col_input))+
+  scale_color_discrete(name="Model") +
+  labs(title="Test set error vs. number of trees for grid models")+
+  scale_y_continuous(name = "Classification error")+
+  scale_x_continuous(name = "Number of trees")+
+  theme_light()
+
+```
+*`r figs(name="boost_grid_mods", "Comparing boosting model test error vs. number of trees")`*
+
+```{r h2o.boost.best_results, echo=F, eval = T, cache=T}
+#look at training data fit
+# svm_0.train.class <- predict(fit_svm_0)
+# svm_1.train.class <- svm_1.train.pred$class
+# table(ldafit1.class, trainData11$label
+h2o.boost.best.train.acc <- mean(h2o.boost.best.train.class$predict == train_pca$label)
+
+#look at test data fit
+# svm_0.test.class <- predict(fit_svm_0, test_nozero)
+# svm_1.test.class <- svm_1.test.pred$class
+h2o.boost.best.test.acc <- mean(h2o.boost.best.test.class$predict == test_pca$label)
+
+h2o.boost.best.train.conf <- confusionMatrix(h2o.boost.best.train.class$predict, train_pca$label)
+h2o.boost.best.test.conf <- confusionMatrix(h2o.boost.best.test.class$predict, test_pca$label)
+```
+
+The training classification accuracy of the optimal 1000 tree model was `r sprintf("%.2f%%", 100*h2o.boost.best.train.conf$overall[[1]])`.
+
+*`r tbls(name="h2o.boost.best_train_conf","Confusion matrix of boosting model on principal component training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.boost.best.train.conf$table))
+```
+
+The test classification accuracy was `r sprintf("%.2f%%", 100*h2o.boost.best.test.conf$overall[[1]])`, which is disappointingly lower than the random forest without PCA data.
+
+*`r tbls(name="h2o.boost.best_test_conf","Confusion matrix of boosting model on principal component test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.boost.best.test.conf$table))
+```
+
+The classification error of the chosen boosting model seems to flatten out at 1000 trees:
+
+```{r best.boost.trees, eval=T, echo=F}
+suppressWarnings(
+  ggplot() +
+    geom_line(data = h2o.boost.best.score, aes(x = Num.trees, y = Train.error, colour = "Training error"), na.rm = T) +
+    geom_line(data = h2o.boost.best.score, aes(x = Num.trees, y = Test.error, colour = "Test error"), na.rm = T) +
+    scale_color_discrete(name = "Legend") +
+    labs(title = "Error vs. number of trees for 59 PCA GBM")+
+    scale_y_continuous(name = "Classification error")+
+    scale_x_continuous(name = "Number of trees")+
+    theme_light()
+  )
+
+```
+*`r figs(name="best.boost_trees", "Decline in classification error with number of trees")`*
+
+It would be interesting to apply a boosting model to the non-PCA data using an interaction depth of 1, and a learning rate of 0.001 (the worst performer at 1000 trees), and run it for a couple of orders of magnitude higher than 1000 trees.
+
+###SVM without PCA
+```{r svm_0_fit, echo=F, eval=F}
+#fit the model with the training data
+fit_svm_0 <- svm(label~., data = train_nozero, cost = 100, scale = T)
+
+saveRDS(fit_svm_0, "output/fit_svm_0.rds")
+rm(fit_svm_0)
+```
+```{r svm_0_results, echo=F, eval = T, cache=T}
+#look at training data fit
+svm_0.train.class <- predict(fit_svm_0)
+# svm_1.train.class <- svm_1.train.pred$class
+# table(ldafit1.class, trainData11$label
+svm_0.train.acc <- mean(svm_0.train.class == train_nozero$label)
+
+#look at test data fit
+svm_0.test.class <- predict(fit_svm_0, test_nozero)
+# svm_1.test.class <- svm_1.test.pred$class
+svm_0.test.acc <- mean(svm_0.test.class == test_nozero$label)
+
+svm_0.train.conf <- confusionMatrix(svm_0.train.class, train_nozero$label)
+svm_0.test.conf <- confusionMatrix(svm_0.test.class, test_nozero$label)
+```
+
+Support Vector Machines are able to construct highly predictive hyper-planes around classes using a kernel approach. In this case, a radial kernel was used. The cost was set to 100 - an arbitrary number that may improve model performance if changed. No grid search was applied here to test this parameter, nor was the gamma variable changed from the default value.
+
+The training classification accuracy for the non-PCA data was `r sprintf("%.2f%%", 100*svm_0.train.conf$overall[[1]])`. You can't do better than this, but we know that there is potentially a significant amount of noise in the non-PCA data, and so this could be significantly over-fitting.
+
+*`r tbls(name="svm_0_train_conf","Confusion matrix of SVM model on training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(svm_0.train.conf$table))
+```
+
+As expected, the test classification error was much lower at `r sprintf("%.2f%%", 100*svm_0.test.conf$overall[[1]])`, which is just slightly better than QDA. The next step is to train an SVM model using less noisy PCA data.
+
+*`r tbls(name="svm_0_test_conf","Confusion matrix of SVM model on test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(svm_0.test.conf$table))
+```
+
+###SVM with PCA
+```{r svm_pca_fit, echo=F, eval=F}
+#try different PCAs
+pca_list <- c(10, 59, 83, 186)
+svm_pca_results <- data.frame("Train_acc" = rep(0, 4), "Test_acc" = rep(0, 4), row.names = pca_list)
+
+for (i in pca_list){
+  fit_svm_pca <- svm(label~., data = train_pca[,1:i], cost = 100, scale = T)
+  svm_pca.train.class <- predict(fit_svm_pca)
+  # svm_pca.train.class <- svm_pca.train.pred$class
+  svm_pca.train.acc <- mean(svm_pca.train.class == train_pca$label)
+  
+  svm_pca.test.class <- predict(fit_svm_pca, test_pca[,1:i])
+  # svm_pca.test.class <- svm_pca.test.pred$class
+  svm_pca.test.acc <- mean(svm_pca.test.class == test_pca$label)
+  
+  svm_pca_results[paste0(i),] <- c(round(svm_pca.train.acc*100,2), round(svm_pca.test.acc*100,2))
+}
+
+saveRDS(svm_pca_results, "output/svm_pca_results.rds")
+rm(svm_pca_results)
+```
+
+Because of the ability of PCA to help remove noisy variation in the training data, it is expected to aid predictive accuracy in SVM by allowing hyper-planes to be more clearly drawn around classes. The optimal amount of principal components was determined to be 59, even though all but the 10 component level yielded 100.00% training accuracy. The test accuracy for 59 components is the highest, and it is also the simplest, making it the strongest choice (see Table 20).
+
+*`r tbls(name="SVM_pca_opt", "Optimal number of principal components for SVM model")`*
+```{r echo=F, eval=T}
+names(svm_pca_results) <- c("Training accuracy", "Test accuracy")
+knitr::kable(svm_pca_results)
+```
+```{r svm_1_fit, echo=F, eval=F}
+#fit the model with the training data
+fit_svm_1 <- svm(label~., data = train_pca[,1:59], cost = 100, scale = T)
+
+saveRDS(fit_svm_1, "output/fit_svm_1.rds")
+rm(fit_svm_1)
+```
+```{r svm_1_results, echo=F, eval = T, cache=T}
+#look at training data fit
+svm_1.train.class <- predict(fit_svm_1)
+# svm_1.train.class <- svm_1.train.pred$class
+# table(ldafit1.class, trainData11$label
+svm_1.train.acc <- mean(svm_1.train.class == train_pca$label)
+
+#look at test data fit
+svm_1.test.class <- predict(fit_svm_1, test_pca[,1:59])
+# svm_1.test.class <- svm_1.test.pred$class
+svm_1.test.acc <- mean(svm_1.test.class == test_pca$label)
+
+svm_1.train.conf <- confusionMatrix(svm_1.train.class, train_pca$label)
+svm_1.test.conf <- confusionMatrix(svm_1.test.class, test_pca$label)
+```
+
+As mentioned, training accuracy was the highest possible `r sprintf("%.2f%%", 100*svm_1.train.conf$overall[[1]])`.
+
+*`r tbls(name="svm_1_train_conf","Confusion matrix of SVM model on PCA training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(svm_1.train.conf$table))
+```
+
+Test classification accuracy was very high too at `r sprintf("%.2f%%", 100*svm_1.test.conf$overall[[1]])`. This is the best performance out of all classifiers tried thus far.
+
+*`r tbls(name="svm_1_test_conf","Confusion matrix of SVM model on PCA test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(svm_1.test.conf$table))
+```
+
+It can be concluded that PCA is a very helpful transformation of image data when using SVM to train a classifier. Also, it is worth noting that the SVM model took minimal computation time despite producing such accurate results.
+
+###Deep learning neural network without PCA
+```{r h2o.nn_1_fit, echo=F, eval=F}
+#fit the model with the training data
+
+localH2O = h2o.init(ip = "localhost", port = 54321, startH2O = TRUE, min_mem_size = "2g", max_mem_size = "4g", nthreads = -1)
+
+h2o.train_nozero <- as.h2o(train_nozero)
+h2o.test_nozero <- as.h2o(test_nozero)
+
+activation_opt <- c("RectifierWithDropout", "TanhWithDropout")
+hidden_opt <- list(c(100,100), c(100), c(400, 400), c(400), c(400, 100), c(100, 400))
+hyper_params <- list(activation = activation_opt, hidden = hidden_opt)
+
+h2o.nn.grid <- h2o.grid("deeplearning",
+                        hyper_params =  hyper_params,
+                        x = 2:ncol(train_nozero),
+                        y = 1,
+                        training_frame = h2o.train_nozero,
+                        validation_frame = h2o.test_nozero,
+                        input_dropout_ratio = 0.2,
+                        # hidden_dropout_ratios = 0.5,
+                        balance_classes = TRUE,
+                        epochs = 20,
+                        variable_importances = TRUE,
+                        l1 = 1e-5
+                        )
+
+
+nn_mod_list <- h2o.nn.grid@model_ids
+n <- length(nn_mod_list)
+nn_results_table <- data.frame(structure = character(n), activation_f = character(n), mean_class_error_train = double(n), mean_class_error_test = double(n), stringsAsFactors=FALSE)
+nn.gg.data <- data.frame(nnepochs = double(), classerror = double(), col_input = character())
+# boost_plot <- ggplot()
+
+for (i in 1:n){
+  x_mod <- h2o.getModel(h2o.nn.grid@model_ids[[i]])
+  
+  #create results table
+  nn_results_table$structure[i] <- if (is.na(x_mod@parameters$hidden[2])) {
+    x_mod@parameters$hidden[1]
+  } else {
+    paste0(x_mod@parameters$hidden[1],"-",x_mod@parameters$hidden[2])
+  }
+  nn_results_table$activation_f[i] <- as.character(x_mod@parameters$activation)
+  nn_results_table$mean_class_error_train[i] <- x_mod@model$training_metrics@metrics$mean_per_class_error
+  nn_results_table$mean_class_error_test[i] <- x_mod@model$validation_metrics@metrics$mean_per_class_error
+  
+  #create comparison chart elements
+  gg.data <- data.frame(
+  nnepochs = x_mod@model$scoring_history$epochs[-1],
+  classerror = x_mod@model$scoring_history$validation_classification_error[-1],
+  col_input = paste0("Activation: ", x_mod@parameters$activation, "; H layers: ",
+                     
+                     if (is.na(x_mod@parameters$hidden[2])) {
+                        x_mod@parameters$hidden[1]
+                      } else {
+                        paste0(x_mod@parameters$hidden[1],"-",x_mod@parameters$hidden[2])
+                      }
+                     
+                    )
+  )
+  
+  nn.gg.data <- rbind(nn.gg.data, gg.data)
+  
+}
+
+# ggplot()+
+#   geom_line(data = nn.gg.data, aes(x = nnepochs, y = classerror, colour = col_input))+
+#   scale_color_discrete(name="Parameters")
+
+saveRDS(nn.gg.data, "output/nn.gg.data.rds")
+saveRDS(nn_results_table, "output/nn_results_table.rds")
+
+h2o.nn_1 <- h2o.deeplearning(x = 2:ncol(train_nozero),
+                            y = 1,
+                            training_frame = h2o.train_nozero, # data in H2O format
+                            validation_frame = h2o.test_nozero,
+                            activation = "RectifierWithDropout", # or 'Tanh'
+                            input_dropout_ratio = 0.2, # % of inputs dropout
+                            # hidden_dropout_ratios = c(0.5, 0.5), # % for nodes dropout
+                            balance_classes = TRUE,
+                            hidden = c(400, 400),
+                            l1 = 1e-5,
+                            #nfolds = 5,
+                            epochs = 100, variable_importances = TRUE) # max. no. of epochs
+
+h2o.nn_1.path <- h2o.saveModel(h2o.nn_1, path = "/Volumes/KINGSTON/DataScienceData/SL_Assignment", force = T)
+# "/Volumes/KINGSTON/DataScienceData/SL_Assignment/DeepLearning_model_R_1498561419260_5"
+
+h2o.nn_1.score <-  data.frame("Train error" = h2o.nn_1@model$scoring_history$training_classification_error,
+                              "Test error" = h2o.nn_1@model$scoring_history$validation_classification_error,
+                              "Num trees" = h2o.nn_1@model$scoring_history$epochs)
+
+# plot(h2o.rf_1.score$Num.trees, h2o.rf_1.score$Train.error)
+# abline(h = mean(h2o.rf_1.score$Train.error[(length(h2o.rf_1.score$Train.error) - 10):length(h2o.rf_1.score$Train.error)]), col = "blue")
+
+h2o.nn_1.train.class <- as.data.frame(h2o.predict(h2o.nn_1, h2o.train_nozero)$predict)
+h2o.nn_1.test.class <- as.data.frame(h2o.predict(h2o.nn_1, h2o.test_nozero)$predict)
+
+# h2o.nn_1@model$validation_metrics
+
+# h2o.nn_1@model$scoring_history$epochs[which.min(h2o.nn_1@model$scoring_history$training_classification_error)]
+
+h2o.shutdown(FALSE)
+
+saveRDS(h2o.nn_1.score, "output/h2o.nn_1.score.rds")
+saveRDS(h2o.nn_1.train.class, "output/h2o.nn_1.train.class.rds")
+saveRDS(h2o.nn_1.test.class, "output/h2o.nn_1.test.class.rds")
+
+
+# 
+# ggplot()+
+#   geom_line(data = h2o.nn_1@model$scoring_history, aes(x = epochs, y = training_classification_error, colour = "Training"))+
+#   geom_line(data = h2o.nn_1@model$scoring_history, aes(x = epochs, y = validation_classification_error, colour = "Test"))+
+#   theme_light()
+
+```
+
+Finally, a neural network approach is considered. The h2o.deeplearning function was used to fit all considered models. In order to find the optimal model, two hyper-parameters were varied:
+
+* The activation function
+* The number of neurons in each layer
+
+Each model had an input layer dropout ratio of 0.2, and hidden layer dropout ratios of 0.5. Additionally, $l1$ regularization was used. These regularization methods were used in order to prevent over-fitting of any of the models, and so were not included in the grid search. This initial grid search was allowed 20 epochs.
+
+The results in Table 23 show that the best performing model had two hidden layers of 400 neurons each, and used the Rectifier activation function (a function that takes the maximum of $x$ or 0).
+
+*`r tbls(name="nn_grid", "Ordered results of grid search for optimal deep learning model")`*
+```{r, echo=F, eval=T}
+names(nn_results_table) <- c("Hidden layers", "Activation function", "Training error", "Test set error")
+nn_results_table[,c(3,4)] <- round(nn_results_table[,c(3,4)],3)
+knitr::kable(nn_results_table)
+```
+
+Three key observation can be observed in Figure 9:
+
+1. The sigmoidal TanH activation function performed very poorly
+2. Two hidden layers were generally better performers than single hidden layers
+3. TanH activation function was quite unstable over the progression of epochs (see Figure 9)
+
+```{r, echo=F, eval=T}
+
+ggplot()+
+  geom_line(data = nn.gg.data, aes(x = nnepochs, y = classerror, colour = col_input))+
+  scale_color_discrete(name="Model") +
+  labs(title="Test set error vs. number of epochs for grid models")+
+  scale_y_continuous(name = "Classification error")+
+  scale_x_continuous(name = "Number of epochs")+
+  theme_light()
+
+```
+*`r figs(name="nn_grid_mods", "Comparing deep learning model test error vs. number of epochs")`*
+
+```{r h2o.nn_1_results, echo=F, eval = T, cache=T}
+#look at training data fit
+# svm_0.train.class <- predict(fit_svm_0)
+# svm_1.train.class <- svm_1.train.pred$class
+# table(ldafit1.class, trainData11$label
+h2o.nn_1.train.acc <- mean(h2o.nn_1.train.class$predict == train_nozero$label)
+
+#look at test data fit
+# svm_0.test.class <- predict(fit_svm_0, test_nozero)
+# svm_1.test.class <- svm_1.test.pred$class
+h2o.nn_1.test.acc <- mean(h2o.nn_1.test.class$predict == test_nozero$label)
+
+h2o.nn_1.train.conf <- confusionMatrix(h2o.nn_1.train.class$predict, train_nozero$label)
+h2o.nn_1.test.conf <- confusionMatrix(h2o.nn_1.test.class$predict, test_nozero$label)
+```
+
+Therefore, the best performing model over 20 epochs was retrained with an allowable 100 epochs. However, best performance was achieved after approximately 30 epochs - as can be seen in Figure 10. The training classification accuracy of this model is extremely high at `r sprintf("%.2f%%", 100*h2o.nn_1.train.conf$overall[[1]])`.
+
+*`r tbls(name="h2o.nn_1_train_conf","Confusion matrix of deep learning model on training data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.nn_1.train.conf$table))
+```
+
+The test classification accuracy of `r sprintf("%.2f%%", 100*h2o.nn_1.test.conf$overall[[1]])` is marginally higher than SVM trained with PCA, which makes neural networks the best performing classifier in this assignment. Additionally, the difference between training error and test error is smaller than with SVM suggesting that a neural network offers better variance.
+
+*`r tbls(name="h2o.nn_1_test_conf","Confusion matrix of deep learning model on test data")`*
+```{r, echo=F, eval=T}
+knitr::kable(addmargins(h2o.nn_1.test.conf$table))
+```
+
+```{r nn_1.trees, eval=T, echo=F}
+suppressWarnings(
+  ggplot() +
+    geom_line(data = h2o.nn_1.score, aes(x = Num.trees, y = Train.error, colour = "Training error"), na.rm = T) +
+    geom_line(data = h2o.nn_1.score, aes(x = Num.trees, y = Test.error, colour = "Test error"), na.rm = T) +
+    scale_color_discrete(name = "Legend") +
+    labs(title = "Error vs. number of epochs for best deep learning model")+
+    scale_y_continuous(name = "Classification error")+
+    scale_x_continuous(name = "Number of epochs")+
+    theme_light()
+  )
+
+```
+*`r figs(name="nn_1_trees", "Decline in classification error with number of epochs")`*
+
+Other neural networks that could be tried in order to improve accuracy may have more layers, or a different amount of neurons in the layers (perhaps 300-300, or 500-500, or 500-500-500). Additionally, they may attempt higher or lower dropout ratios.
+
+```{r overall.results, echo=F, eval=F}
+
+nm <- 9
+overall_results <- data.frame(classifier = character(nm), hyper = character(nm), trainacc = character(nm), testacc = character(nm), pca = character(nm), stringsAsFactors = F)
+
+#LDA without PCA
+overall_results$classifier[1] <- "LDA"
+overall_results$hyper[1] <- "NA"
+overall_results$trainacc[1] <- sprintf("%.2f%%", 100*lda_1.train.conf$overall[[1]])
+overall_results$testacc[1] <- sprintf("%.2f%%", 100*lda_1.test.conf$overall[[1]])
+overall_results$pca[1] <- "NA"
+
+#LDA with PCA
+overall_results$classifier[2] <- "LDA"
+overall_results$hyper[2] <- "NA"
+overall_results$trainacc[2] <- sprintf("%.2f%%", 100*lda_2.train.conf$overall[[1]])
+overall_results$testacc[2] <- sprintf("%.2f%%", 100*lda_2.test.conf$overall[[1]])
+overall_results$pca[2] <- "186"
+
+#QDA with PCA
+overall_results$classifier[3] <- "QDA"
+overall_results$hyper[3] <- "NA"
+overall_results$trainacc[3] <- sprintf("%.2f%%", 100*qda_2.train.conf$overall[[1]])
+overall_results$testacc[3] <- sprintf("%.2f%%", 100*qda_2.test.conf$overall[[1]])
+overall_results$pca[3] <- "59"
+
+#Random forest without PCA
+overall_results$classifier[4] <- "Random Forest"
+overall_results$hyper[4] <- "Trees: 200, Minimum leaves: 3"
+overall_results$trainacc[4] <- sprintf("%.2f%%", 100*h2o.rf_1.train.conf$overall[[1]])
+overall_results$testacc[4] <- sprintf("%.2f%%", 100*h2o.rf_1.test.conf$overall[[1]])
+overall_results$pca[4] <- "NA"
+
+#Random forest with PCA
+overall_results$classifier[5] <- "Random Forest"
+overall_results$hyper[5] <- "Trees: 500, Minimum leaves: 3"
+overall_results$trainacc[5] <- sprintf("%.2f%%", 100*h2o.rf_2.train.conf$overall[[1]])
+overall_results$testacc[5] <- sprintf("%.2f%%", 100*h2o.rf_2.test.conf$overall[[1]])
+overall_results$pca[5] <- "59"
+
+#Boosting with PCA
+overall_results$classifier[6] <- "Boosting"
+overall_results$hyper[6] <- "I depth: 3, L rate: 0.02, Trees: 1000"
+overall_results$trainacc[6] <- sprintf("%.2f%%", 100*h2o.boost.best.train.conf$overall[[1]])
+overall_results$testacc[6] <- sprintf("%.2f%%", 100*h2o.boost.best.test.conf$overall[[1]])
+overall_results$pca[6] <- "59"
+
+#SVM without PCA
+overall_results$classifier[7] <- "Support Vector Machines"
+overall_results$hyper[7] <- "Cost: 100"
+overall_results$trainacc[7] <- sprintf("%.2f%%", 100*svm_0.train.conf$overall[[1]])
+overall_results$testacc[7] <- sprintf("%.2f%%", 100*svm_0.test.conf$overall[[1]])
+overall_results$pca[7] <- "NA"
+
+#SVM with PCA
+overall_results$classifier[8] <- "Support Vector Machines"
+overall_results$hyper[8] <- "Cost: 100"
+overall_results$trainacc[8] <- sprintf("%.2f%%", 100*svm_1.train.conf$overall[[1]])
+overall_results$testacc[8] <- sprintf("%.2f%%", 100*svm_1.test.conf$overall[[1]])
+overall_results$pca[8] <- "59"
+
+#Deep learning neural network without PCA
+overall_results$classifier[9] <- "Deep learning NN"
+overall_results$hyper[9] <- "Act: Rect + dropout, H layers: 400-400"
+overall_results$trainacc[9] <- sprintf("%.2f%%", 100*h2o.nn_1.train.conf$overall[[1]])
+overall_results$testacc[9] <- sprintf("%.2f%%", 100*h2o.nn_1.test.conf$overall[[1]])
+overall_results$pca[9] <- "NA"
+
+names(overall_results) <- c("Classifier", "Hyper parameters", "Training accuracy", "Test accuracy", "PCA?")
+overall_results <- overall_results[order(overall_results$`Test accuracy`, decreasing = T),]
+
+saveRDS(overall_results, "output/overall_results.rds")
+
+```
+
+#Q2: Zillow Prize (Kaggle) - Home value prediction
+
+```{r zdata, echo=F, eval=F}
+#LOAD
+zillowData <- fread("/Users/blakecuningham/Documents/DataScienceData/Kaggle_C_Zillow1/properties_2016.csv", showProgress = T)
+# zillowData <- fread("E:\\DataScienceData\\Kaggle_C_Zillow1\\properties_2016.csv", showProgress = T)
+
+zillow_t_data <- read.csv("/Users/blakecuningham/Documents/DataScienceData/Kaggle_C_Zillow1/train_2016.csv")
+# train_data <- read.csv("E:\\DataScienceData\\Kaggle_C_Zillow1\\train_2016.csv")
+zillow_t_data$transactiondate <- as.POSIXct(zillow_t_data$transactiondate)
+
+zillow_full <- merge(zillow_t_data, zillowData, by = "parcelid") #left join only?
+
+#CLEAN AND FORMAT
+ 
+#order data by transaction date
+zillow_full <- zillow_full[order(zillow_full$transactiondate),]
+
+#remove missing variables from consideration
+zillow_full_small <- zillow_full[,c(
+  # "buildingclasstypeid",
+  # "finishedsquarefeet13",
+  # "basementsqft",
+  # "storytypeid",
+  # "yardbuildingsqft26",
+  # "architecturalstyletypeid",
+  # "typeconstructiontypeid",
+  # "finishedsquarefeet6",
+  # "decktypeid",
+  # "poolsizesum",
+  # "pooltypeid10",
+  # "pooltypeid2",
+  # "taxdelinquencyyear",
+  # "yardbuildingsqft17",
+  # "finishedsquarefeet15",
+  # "finishedfloor1squarefeet",
+  # "finishedsquarefeet50",
+  # "fireplacecnt",
+  # "threequarterbathnbr",
+  # "pooltypeid7",
+  # "poolcnt",
+  # "numberofstories",
+  # "airconditioningtypeid",
+  # "garagecarcnt",
+  # "garagetotalsqft",
+  # "regionidneighborhood",
+  # "heatingorsystemtypeid",
+  # "buildingqualitytypeid",
+  # "unitcnt",
+  # "lotsizesquarefeet",
+  "finishedsquarefeet12",
+  "regionidcity",
+  "calculatedbathnbr",
+  "fullbathcnt",
+  "yearbuilt",
+  "calculatedfinishedsquarefeet",
+  "censustractandblock",
+  "structuretaxvaluedollarcnt",
+  "regionidzip",
+  "taxamount",
+  "taxvaluedollarcnt",
+  "landtaxvaluedollarcnt",
+  "bathroomcnt",
+  "bedroomcnt",
+  "fips",
+  "latitude",
+  "longitude",
+  "propertylandusetypeid",
+  "rawcensustractandblock",
+  "regionidcounty",
+  "roomcnt",
+  "assessmentyear",
+  "parcelid",
+  "logerror",
+  "transactiondate",
+  "hashottuborspa",
+  "propertycountylandusecode",
+  "propertyzoningdesc",
+  "fireplaceflag",
+  "taxdelinquencyflag"
+)]
+
+zillow_full_small$regionidcity <- as.factor(zillow_full_small$regionidcity)
+zillow_full_small$censustractandblock <- as.factor(zillow_full_small$censustractandblock)
+zillow_full_small$regionidzip <- as.factor(zillow_full_small$regionidzip)
+zillow_full_small$propertylandusetypeid <- as.factor(zillow_full_small$propertylandusetypeid)
+zillow_full_small$rawcensustractandblock <- as.factor(zillow_full_small$rawcensustractandblock)
+zillow_full_small$regionidcounty <- as.factor(zillow_full_small$regionidcounty)
+zillow_full_small$propertycountylandusecode <- as.factor(zillow_full_small$propertycountylandusecode)
+zillow_full_small$propertyzoningdesc <- as.factor(zillow_full_small$propertyzoningdesc)
+zillow_full_small$fireplaceflag <- as.factor(zillow_full_small$fireplaceflag)
+zillow_full_small$taxdelinquencyflag <- as.factor(zillow_full_small$taxdelinquencyflag)
+zillow_full_small$hashottuborspa <- as.factor(zillow_full_small$hashottuborspa)
+zillow_full_small$parcelid <- as.factor(zillow_full_small$parcelid)
+
+zillow_full_small$taxdelinquencyflag <- ifelse(zillow_full_small$taxdelinquencyflag == "Y", TRUE, FALSE)
+zillow_full_small$fireplaceflag <- ifelse(zillow_full_small$fireplaceflag == "true", TRUE, FALSE)
+zillow_full_small$hashottuborspa <- ifelse(zillow_full_small$hashottuborspa == "true", TRUE, FALSE)
+
+
+row.names(zillow_full_small) <- 1:nrow(zillow_full_small)
+
+zillow_full_small_2 <- zillow_full_small
+
+zillow_full_small <- zillow_full_small[, c("logerror", names(zillow_full_small)[(!names(zillow_full_small) %in% c("logerror", "parcelid", "rawcensustractandblock", "censustractandblock", "regionidzip", "propertyzoningdesc", "finishedsquarefeet12", "bathroomcnt", "assessmentyear"))])]
+
+train_index <- zillow_full_small$transactiondate < "2016-10-01"
+
+ztrain <- zillow_full_small[train_index,]
+ztest <- zillow_full_small[!train_index,]
+
+saveRDS(zillow_full, "output/zillow_full.rds")
+saveRDS(zillow_full_small, "output/zillow_full_small.rds")
+saveRDS(ztrain, "output/ztrain.rds")
+saveRDS(ztest, "output/ztest.rds")
+
+```
+
+
+##Introduction
+
+The data-set explored in this section comes from a recent Kaggle competition - "Zillow Prize: Zillow's Home Value Prediction (Zestimate)". The company Zillow is a property search website, well known for being able to produce a number called a "Zestimate" which is their best calculation of a specific home's selling price. The Zestimate is considered to be typically accurate within a few percentage points, and has helped the company grow rapidly over the last 10 years. Zillow is looking for an improvement over their current pricing algorithm which is why they have made this data available.
+
+The data consists of a large number of numeric and categorical predictors, with an unusual response variable: The log error of the Zestimate, i.e.:
+
+$$logerror = log(Zestimate_t) - log(ActualSalePrice_t)$$
+
+This aspect of the data poses an analytical challenge - if we assume that the Zestimate estimates have been accurately produced to begin with, then there will likely be very little information contained within the response variable.
+
+###Measuring model performance
+
+The primary measure of accuracy will be Mean Absolute Error (MAE) defined as:
+
+$$MAE = \frac{\sum_{i=1}^{n} |\hat{y_i} - y_i|}{n} $$
+
+This is the measure used by the Kaggle competition, and will allow us to compare predictive accuracy between various different models based on the test data. However, it's important to note that in general we are looking to outperform a specific number given by:
+
+$$MAE_{benchmark} = \frac{\sum_{i=1}^{n} |\bar{y} - y_i|}{n}$$
+The comparison of the two measures is similar to calculating a coefficient of determination, except the error terms are absolute values and not squares. The reason for using an absolute error instead of squared error is to ensure that large deviations from zero are not overly weighted - this may change the dynamic of the Kaggle competition where participants look for patterns to only identify specific very large deviations and simply use the mean to predict all others.
+
+###Training and test separation
+
+The data supplied contains transaction information for the whole of 2016. The data is then split as follows:
+
+* Training data: full data before 1 October 2016
+* Test data: a portion of data after 1 October 2016 (but before 2017). The remaining data is kept secret by Zillow in order to use this unseen test data for comparison.
+
+The Kaggle output format is very specific, but this assignment will just consider the MAE of the test data.
+
+##Data exploration / description
+
+The key characteristic of this data is that there is very little deviation from the mean of ~0, and it is normally distributed around this mean. Also, there are several very large outliers where the Zestimate has significantly differed from actual sale prices. It is unclear whether or not this is caused by a poor Zestimate prediction, or an anomaly in the specific sale.
+
+```{r, echo=F, eval=T, fig.height=3, fig.width=6}
+ztrain %>%
+select(logerror) %>%
+ggplot()+
+  geom_histogram(aes(x = logerror), bins = 1000)+
+  labs(title="Histogram of logerror")+
+  scale_y_continuous(name = "Frequency")+
+  scale_x_continuous(name = "logerror")+
+  theme_light()
+
+```
+
+*`r figs(name = "zhist", "Histogram of logerror (response variable) for training data")`*
+
+The second characteristic pertains to the predictor variables. There is a lot of missing information:
+
+```{r, echo=F, eval=T, fig.height=6, fig.width=6}
+
+exist_values <- zillow_full[,-2] %>% summarize_each(funs(sum(!is.na(.))/n()))
+
+exist_values <- gather(exist_values, key="feature", value="exist_pct")
+  
+exist_values %>% 
+  ggplot(aes(x=reorder(feature,-exist_pct),y=exist_pct)) +
+  geom_bar(stat="identity", fill = 4)+
+  coord_flip()+
+  scale_x_discrete(name="Predictor")+
+  scale_y_continuous(name="Percent of data that exists")+
+  labs(title="Distribution of existing data in predictors")+
+  theme_light()
+
+```
+
+*`r figs(name = "zpredquality", "Amount of available data in full data set")`*
+
+There are several ways to approach this problem, including imputing the missing values, but for this assignment the relatively empty predictors are excluded from the training data - those with less than ~85% values missing (there is a clear inflection point below this). Additionally, obviously highly correlated variables are removed (e.g. "bathroomcnt" is removed because we have "calculatedbthnbr" as well).
+
+Then, within each of the predictors, there is very little discernible relationship to the response variable. For example, in the figure below the logerror vs. the year houses were built is plotted - the actual observations are in black, the year means are in red, and the 99% confidence interval is the blue shaded area. The confidence interval is not even discernible for most of the years showing just how little the response variable varies with this predictor. The relationship with other predictors behaves in a similar way. Additionally, even though there is some variation in earlier years for this data, the confidence interval covers both positive and negative regions meaning that there is unlikely significant information here.
+
+```{r, echo=F, eval=T, fig.height=3, fig.width=6}
+
+ztrain %>%
+select(logerror, yearbuilt) %>%
+ggplot(aes(x=yearbuilt, y=logerror))+ 
+    stat_summary(geom="ribbon", fun.data=mean_cl_normal, 
+                 fun.args=list(conf.int=0.99), fill="lightblue", na.rm = T)+
+    stat_summary(geom="line", fun.y=mean, linetype="dashed", na.rm = T)+
+    stat_summary(geom="point", fun.y=mean, color="red", na.rm = T)+
+  geom_point(aes(x = yearbuilt, y = logerror), size = 0.1, na.rm = T)+
+  labs(title="Distribution of logerror vs. year house was built")+
+  theme_light()
+    
+
+```
+
+*`r figs(name = "le_yearbuilt", "Distribution of logerror versus year built")`*
+
+However, despite the weak evidence of a relationship upon visual inspection, there does exist a strong relationship between year the house was built and logerror after conducting a simple linear regression. The relationship is very small (around one tenth of a percent), but it is significant far beyond a 1% level. This result is primarily due to the very high number of observations that we have in the data-set (~80 000 in the training set). Additionally, there are possibly combinations of predictors that are even more predictive.
+
+*`r tbls(name = "le_yearbuilt_mod", "Simple linear model of year built and logerror")`*
+
+```{r, echo=F, eval=T}
+knitr::kable(summary(lm(logerror~yearbuilt, data = ztrain))$coefficients)
+```
+
+The results are not shown here (because of space constraints), but there are a large amount of predictive variables after taking into account all the categorical dummy variables. This further indicates that there will be a group of variables that would perform well in a multiple linear regression.
+
+##Approach
+
+This assignment will take a targeted approach, first looking at multiple linear regression, then regularized regression, and then finally reviewing a random forest and two neural networks.
+
+In some cases, certain variables will be left out before searching in order to help reduce the amount of parameters. For example, the "Raw Census Tract and Block" predictor has over 40 000 factors which add too many terms to a regression, and too many input neurons to a neural network. An approach one could potentially take is to extract a few of these factors and identify them, especially if they are associated with large logerrors, and create a new variable with just a handful of factors. This is done after a subset search.
+
+##Results
+
+The table below shows the final results of the various approaches. The table is ranked by the test MAE, and the benchmark MAE is second from last.
+
+*`r tbls(name="overall_results_z","Summary of main models used to predict test logerror")`*
+```{r echo=F, eval=T}
+names(overall_results_z) <- c("Model", "Training MAE", "Test MAE", "Notes")
+overall_results_z <- overall_results_z[order(overall_results_z$`Test MAE`, decreasing = F),]
+knitr::kable(overall_results_z, row.names = F)
+```
+
+Surprisingly, the simplest technique produced the best results - multiple linear regression. While the random forest had the best training MAE, it had the worst test MSE indicating that it was prone to over-fitting the training data. A neural network using the variables subset during the linear regression analysis produced the second best results, followed closely by a ridge regression approach. As will be seen, the ridge regression was not properly able to optimize lambda and resulted in extremely small coefficients resulting in essentially just an intercept forming the model - from this perspective, the only very slight improvement in performance from the neural network is not very impressive.
+
+##Analysis
+
+###Linear regression
+
+In order to perform a multiple linear regression, the most important first step is to identify which predictors help to produce a good model. A sub-setting approach was employed in this instance by reviewing both forward and backward selection and finding which variables produced the lowest Bayesian Information Criterion (BIC) - see Figure 14.
+
+```{r, eval=F, echo=F}
+
+fit.ss.f.lin <- regsubsets(logerror~., data = ztrain, method = "forward", really.big = T, nvmax = 200)
+fit.ss.b.lin <- regsubsets(logerror~., data = ztrain, method = "backward", really.big = T, nvmax = 200)
+# fit.ss.f.lin <- regsubsets(logerror~ calculatedfinishedsquarefeet + latitude + longitude + hashottuborspa , data = ztrain, method = "forward", nvmax=4)
+
+fit.ss.f.lin.summary <- summary(fit.ss.f.lin)
+fit.ss.b.lin.summary <- summary(fit.ss.f.lin)
+
+saveRDS(fit.ss.f.lin.summary, "output/fit.ss.f.lin.summary.rds")
+saveRDS(fit.ss.b.lin.summary, "output/fit.ss.b.lin.summary.rds")
+
+```
+```{r regs_select, echo=F, eval=T}
+
+data.frame(x = 1:50, forward = fit.ss.f.lin.summary$bic[1:50], backward = fit.ss.b.lin.summary$bic[1:50]) %>%
+  ggplot()+
+    geom_line(aes(x = x, y = forward, colour = "Forward"))+
+    geom_line(aes(x = x, y = backward, colour = "Backward"))+
+    geom_vline(xintercept = 16, col = 1, size = 0.5, linetype = 2)+
+    annotate("text", x = 16, y = -150, label = " Number of predictor variables: 16", hjust = 0)+
+    scale_x_continuous(name = "Number of predictor variables")+
+    scale_y_continuous(name = "BIC")+
+    labs(title="Selecting the optimal number of predictor variables based on best subset selection")+
+    scale_color_discrete(name = "Search")+
+    theme_light()
+
+```
+
+*`r figs(name = "regs_select", "Using the BIC to select the optimal model based on forward and backward subset selection")`*
+
+The forward approach (adding variables) resulted in about 10 variables being selected, while a backward approach (removing variables) resulted in 16 variables being selected. The backward approach also produced a far lower BIC curve in general. In Table 28, the variables of the these two optimal points are compared:
+
+*`r tbls(name = "regs_select_pred", "Choosing the best predictors from both forward and backwards selection")`*
+
+```{r, echo=F, eval=T}
+
+fb_merge <- merge(data.frame(fit.ss.f.lin.summary$which[10,][fit.ss.f.lin.summary$which[10,] == T]), data.frame(fit.ss.b.lin.summary$which[16,][fit.ss.b.lin.summary$which[16,] == T]), by = "row.names", all.y=T)
+
+names(fb_merge) <- c("Predictor", "Forward selection", "Backward selection")
+knitr::kable(fb_merge)
+
+```
+
+All of the predictors selected with the forward approach are contained within the variables selected by the backward approach. Also, interestingly, there were three tax related variables chosen that appeared quite correlated in a co-variance matrix.
+```{r, echo=F, eval=T}
+
+
+train_index <- zillow_full_small$transactiondate < "2016-10-01"
+
+
+#create new factors for regionitcity
+zillow_full_small$regionidcity <- factor(zillow_full_small$regionidcity)
+zillow_full_small$regionidcity <- as.factor(zillow_full_small$regionidcity)
+zillow_full_small$regionidcity <- as.character(zillow_full_small$regionidcity)
+zillow_full_small$regionidcity_2 <- ifelse(zillow_full_small$regionidcity == "31134" | zillow_full_small$regionidcity == "46098" | zillow_full_small$regionidcity == "50749" | zillow_full_small$regionidcity == "54299" | zillow_full_small$regionidcity == "6822",
+                                as.character(zillow_full_small$regionidcity),
+                                "other")
+
+zillow_full_small$regionidcity <- as.factor(zillow_full_small$regionidcity)
+zillow_full_small$regionidcity_2 <- as.factor(zillow_full_small$regionidcity_2)
+
+
+
+#create new factors for propertycountylandusecode
+zillow_full_small$propertycountylandusecode <- factor(zillow_full_small$propertycountylandusecode)
+zillow_full_small$propertycountylandusecode <- as.factor(zillow_full_small$propertycountylandusecode)
+zillow_full_small$propertycountylandusecode <- as.character(zillow_full_small$propertycountylandusecode)
+zillow_full_small$propertycountylandusecode_2 <- ifelse(zillow_full_small$propertycountylandusecode == "0101" | zillow_full_small$propertycountylandusecode == "040A" | zillow_full_small$propertycountylandusecode == "200",
+                                as.character(zillow_full_small$propertycountylandusecode),
+                                "other")
+
+zillow_full_small$propertycountylandusecode <- as.factor(zillow_full_small$propertycountylandusecode)
+zillow_full_small$propertycountylandusecode_2 <- as.factor(zillow_full_small$propertycountylandusecode_2)
+
+
+
+#create new factors for propertylandusetypeid
+zillow_full_small$propertylandusetypeid <- factor(zillow_full_small$propertylandusetypeid)
+zillow_full_small$propertylandusetypeid <- as.factor(zillow_full_small$propertylandusetypeid)
+zillow_full_small$propertylandusetypeid <- as.character(zillow_full_small$propertylandusetypeid)
+zillow_full_small$propertylandusetypeid_2 <- ifelse(zillow_full_small$propertylandusetypeid == "247" | zillow_full_small$propertylandusetypeid == "248" | zillow_full_small$propertylandusetypeid == "263",
+                                as.character(zillow_full_small$propertylandusetypeid),
+                                "other")
+
+zillow_full_small$propertylandusetypeid <- as.factor(zillow_full_small$propertylandusetypeid)
+zillow_full_small$propertylandusetypeid_2 <- as.factor(zillow_full_small$propertylandusetypeid_2)
+
+
+ztrain <- zillow_full_small[train_index,]
+ztest <- zillow_full_small[!train_index,]
+
+
+```
+
+*`r tbls(name = "lin_mod", "Linear model summary")`*
+
+```{r, eval=T, echo=F}
+
+fit.linear.bestsubsets <- lm(logerror ~ calculatedfinishedsquarefeet + hashottuborspa + propertycountylandusecode_2 + propertylandusetypeid_2 + regionidcity_2 + taxamount + taxdelinquencyflag + taxvaluedollarcnt, data = ztrain)
+
+# summary(fit.linear.bestsubsets)
+
+knitr::kable(round(summary(fit.linear.bestsubsets)$coefficients,4))
+
+```
+
+These variables are then input into a linear regression, with the results summarized in Table 29. Most of the variables are associated with predicting that the Zestimate is over-estimating house prices (a positive logerror). However, these values do not tell us anything in general about actual house prices as we do not have this information.
+
+Next, the training and test MAE is calculated. Both are below the benchmark. While the results do not seem very impressive, it is worth noting that the current best ranked MAE on Kaggle is 0.6418 based on this test data and additional unseen test data.
+
+*`r tbls(name = "lin_mod_results", "Linear model performance")`*
+
+```{r, eval=T, echo=F}
+
+lin.train.predict <- predict(fit.linear.bestsubsets, ztrain)
+
+benchmark.train.mae <- sum((abs(ztrain$logerror - mean(ztrain$logerror)))) / length(ztrain$logerror)
+# benchmark.train.mae
+
+lin.train.mae <- sum(abs(lin.train.predict - ztrain$logerror), na.rm = T) / length(lin.train.predict)
+# lin.train.mae
+
+lin.test.predict <- predict(fit.linear.bestsubsets, ztest)
+
+benchmark.test.mae <- sum((abs(ztest$logerror - mean(ztrain$logerror)))) / length(ztest$logerror)
+# benchmark.test.mae
+
+lin.test.mae <- sum(abs(lin.test.predict - ztest$logerror), na.rm = T) / length(lin.test.predict)
+# lin.test.mae
+
+lin.result <- data.frame(row.names = c("Benchmark", "Model"), train = c(benchmark.train.mae, lin.train.mae), test = c(benchmark.test.mae, lin.test.mae))
+names(lin.result) <- c("Training MAE", "Test MAE")
+knitr::kable(round(lin.result,4))
+
+```
+
+###Linear regression with regularization
+
+The next stage of the linear regression is to add regularization by way of ridge regression. This is a method of adding a parameter penalty to the cost function. The size of the penalty is given by $\lambda$ (lambda). In order to estimate the optimal lambda, cross-validation is used on the training data to investigate how the training error changes with lambda - lambda is chosen at one standard error from the minimum lambda. In this case, the standard error is very large and therefore so is lambda.
+
+```{r, echo=F, eval=T}
+
+X_ridge <- model.matrix(fit.linear.bestsubsets) #potential way to input into glmnet
+Y_ridge <- as.matrix(model.frame(fit.linear.bestsubsets)[1], ncol = 1)
+
+# Y_ridge
+
+
+cv.lin.ridge.bestsubset <- cv.glmnet(x = X_ridge, y = Y_ridge, alpha = 0, nfolds = 8, type.measure = "mse", standardize = TRUE)
+plot(cv.lin.ridge.bestsubset)
+# summary(cv.lin.ridge.bestsubset)
+
+```
+
+*`r figs(name = "lmbda_error", "Log of lambda and model error")`*
+
+As lambda increases, the coefficients of the linear regression are decreased (as in Figure 16). In this case, the chosen lambda is so high as to reduce coefficients to near zero - this results in a model that is effectively only an intercept term.
+
+```{r, echo=F, eval=T}
+
+lin.ridge.bestsubset_1 <- glmnet(x = X_ridge, y = Y_ridge, alpha = 0, standardize = TRUE)
+plot(lin.ridge.bestsubset_1, xvar="lambda", label = TRUE)
+abline(v=log(cv.lin.ridge.bestsubset$lambda.1se), lty="dashed")
+
+# cv.lin.ridge.bestsubset$lambda.min
+# cv.lin.ridge.bestsubset$lambda.1se
+
+# coef(lin.ridge.bestsubset_1, s=c(cv.lin.ridge.bestsubset$lambda.1se, 0) )
+
+```
+
+*`r figs(name = "ridge_coeff", "Model coefficients decrease with lambda")`*
+
+Using the regularized model, the training and test MAE are calculated. The model does managed to beat the benchmark, but only just. It did not perform as well as a pure linear regression.
+
+*`r tbls(name = "ridge_mod_results", "Ridge regression model performance")`*
+
+```{r, echo=F, eval=T}
+
+ridge.train.predict <- predict(lin.ridge.bestsubset_1,newx = X_ridge, s = cv.lin.ridge.bestsubset$lambda.1se)
+
+ridge.train.mae <- sum(abs(ridge.train.predict - Y_ridge), na.rm = T) / length(ridge.train.predict)
+
+X_ridge_test <- model.matrix(logerror ~ calculatedfinishedsquarefeet + hashottuborspa + propertycountylandusecode_2 + propertylandusetypeid_2 + regionidcity_2 + taxamount + taxdelinquencyflag + taxvaluedollarcnt, data = ztest)
+
+Y_ridge_test <- as.matrix(model.frame(logerror ~ calculatedfinishedsquarefeet + hashottuborspa + propertycountylandusecode_2 + propertylandusetypeid_2 + regionidcity_2 + taxamount + taxdelinquencyflag + taxvaluedollarcnt, data = ztest)[1], ncol = 1)
+
+ridge.test.predict <- predict(lin.ridge.bestsubset_1,newx = X_ridge_test, s = cv.lin.ridge.bestsubset$lambda.1se)
+ridge.test.mae <- sum(abs(ridge.test.predict - Y_ridge_test), na.rm = T) / length(ridge.test.predict)
+
+ridge.result <- data.frame(row.names = c("Benchmark", "Model"), train = c(benchmark.train.mae, ridge.train.mae), test = c(benchmark.test.mae, ridge.test.mae))
+names(ridge.result) <- c("Training MAE", "Test MAE")
+knitr::kable(round(ridge.result,4))
+
+```
+
+###Neural Network and Random Forest
+
+Given the complex nature of the data, a more complex non-parametric approach is worth considering. First, a random forest with 200 trees, and a minimum of 3 observations allowed at each leaf is used with the variables subset during the linear regression stage. The model performs better than all others in terms of the training MAE, but worse than all others in terms of the test MAE. A larger random forest based on the un-subset data may perform better, but it was not tried here.
+```{r, echo=F, eval=F}
+
+nn.z_train <- cbind(Y_ridge, X_ridge)
+nn.z_test <- cbind(Y_ridge_test, X_ridge_test)
+
+localH2O = h2o.init(ip = "localhost", port = 54321, startH2O = TRUE, min_mem_size = "2g", max_mem_size = "3g", nthreads = -1)
+
+h2o.z_train <- as.h2o(nn.z_train)
+h2o.z_test <- as.h2o(nn.z_test)
+
+h2o.z_train_full <- as.h2o(ztrain[-c(18, 23, 24, 25)]) #remove transaction date, and new regression columns
+h2o.z_test_full <- as.h2o(ztest[-c(18, 23, 24, 25)]) #remove transaction date, and new regression columns
+
+h2o.z.rf <- h2o.randomForest(x = 2:ncol(nn.z_train),
+                             y = 1,
+                             training_frame = h2o.z_train,
+                             validation_frame = h2o.z_test,
+                             ntrees = 200,
+                             min_rows = 3)
+
+h2o.z.rf.predict.train <- as.data.frame(h2o.predict(h2o.z.rf, h2o.z_train))
+z.rf.train.mae <- sum(abs(h2o.z.rf.predict.train$predict - nn.z_train[,1]), na.rm = T) / length(h2o.z.rf.predict.train$predict)
+
+h2o.z.rf.predict.test <- as.data.frame(h2o.predict(h2o.z.rf, h2o.z_test))
+z.rf.test.mae <- sum(abs(h2o.z.rf.predict.test$predict - nn.z_test[,1]), na.rm = T) / length(h2o.z.rf.predict.test$predict)
+
+h2o.z.dl <- h2o.deeplearning(x = 2:ncol(nn.z_train),
+                             y = 1,
+                             training_frame = h2o.z_train,
+                             validation_frame = h2o.z_test,
+                             input_dropout_ratio = 0.2,
+                            # hidden_dropout_ratios = 0.5,
+                            hidden = c(12, 12, 12),
+                            activation = "RectifierWithDropout",
+                            # balance_classes = TRUE,
+                            epochs = 30,
+                            variable_importances = TRUE,
+                            l1 = 1e-5)
+
+
+#nn with just lm data
+h2o.z.dl.predict.train <- as.data.frame(h2o.predict(h2o.z.dl, h2o.z_train))
+z.dl.train.mae <- sum(abs(h2o.z.dl.predict.train$predict - nn.z_train[,1]), na.rm = T) / length(h2o.z.dl.predict.train$predict)
+
+h2o.z.dl.predict.test <- as.data.frame(h2o.predict(h2o.z.dl, h2o.z_test))
+z.dl.test.mae <- sum(abs(h2o.z.dl.predict.test$predict - nn.z_test[,1]), na.rm = T) / length(h2o.z.dl.predict.test$predict)
+
+h2o.z.dl.full <- h2o.deeplearning(x = 2:ncol(h2o.z_train_full),
+                             y = 1,
+                             training_frame = h2o.z_train_full,
+                             validation_frame = h2o.z_test_full,
+                             input_dropout_ratio = 0.2,
+                            # hidden_dropout_ratios = 0.5,
+                            hidden = c(200, 200, 200),
+                            activation = "RectifierWithDropout",
+                            # balance_classes = TRUE,
+                            epochs = 50,
+                            variable_importances = TRUE,
+                            l1 = 1e-5)
+
+#nn with full data
+h2o.z.dl.predict.train_full <- as.data.frame(h2o.predict(h2o.z.dl.full, h2o.z_train_full))
+z.dl.train.full.mae <- sum(abs(h2o.z.dl.predict.train_full$predict - as.data.frame(h2o.z_train_full[,1])$logerror), na.rm = T) / length(h2o.z.dl.predict.train_full$predict)
+z.dl.train.full.mae
+
+
+h2o.z.dl.predict.test_full <- as.data.frame(h2o.predict(h2o.z.dl.full, h2o.z_test_full))
+z.dl.test.full.mae <- sum(abs(h2o.z.dl.predict.test_full$predict - as.data.frame(h2o.z_test_full[,1])$logerror), na.rm = T) / length(h2o.z.dl.predict.test_full$predict)
+z.dl.test.full.mae
+
+h2o.shutdown(FALSE)
+
+saveRDS(h2o.z.rf.predict.train,"output/h2o.z.rf.predict.train.rds")
+saveRDS(z.rf.train.mae,"output/z.rf.train.mae.rds")
+saveRDS(h2o.z.rf.predict.test,"output/h2o.z.rf.predict.test.rds")
+saveRDS(z.rf.test.mae,"output/z.rf.test.mae.rds")
+saveRDS(h2o.z.dl.predict.train,"output/h2o.z.dl.predict.train.rds")
+saveRDS(z.dl.train.mae,"output/z.dl.train.mae.rds")
+saveRDS(h2o.z.dl.predict.test,"output/h2o.z.dl.predict.test.rds")
+saveRDS(z.dl.test.mae,"output/z.dl.test.mae.rds")
+saveRDS(h2o.z.dl.predict.train_full,"output/h2o.z.dl.predict.train_full.rds")
+saveRDS(z.dl.train.full.mae,"output/z.dl.train.full.mae.rds")
+saveRDS(h2o.z.dl.predict.test_full,"output/h2o.z.dl.predict.test_full.rds")
+saveRDS(z.dl.test.full.mae,"output/z.dl.test.full.mae.rds")
+
+```
+
+*`r tbls(name = "z.rf_mod_results", "Random Forest model performance")`*
+
+```{r, echo=F, eval=T}
+z.rf.result <- data.frame(row.names = c("Benchmark", "Model"), train = c(benchmark.train.mae, z.rf.train.mae), test = c(benchmark.test.mae, z.rf.test.mae))
+names(z.rf.result) <- c("Training MAE", "Test MAE")
+knitr::kable(round(z.rf.result,4))
+```
+
+Next, two different neural networks are considered. The first uses the subset variables, and the second uses all the original variables. Both models use a Rectifier activation function, and have three hidden layers. Both have an input dropout ratio of 0.2, and hidden dropout ratios of 0.5. The first model structure is (12, 12, 12), and marginally outperforms the benchmark. The model optimized after just 5 epochs.
+
+*`r tbls(name = "z.dl_mod_results", "Small neural network model performance")`*
+
+```{r, echo=F, eval=T}
+z.dl.result <- data.frame(row.names = c("Benchmark", "Model"), train = c(benchmark.train.mae, z.dl.train.mae), test = c(benchmark.test.mae, z.dl.test.mae))
+names(z.dl.result) <- c("Training MAE", "Test MAE")
+knitr::kable(round(z.dl.result,4))
+```
+
+A more complex model using the un-subsetted data is tried next. In order to account for the significantly increased amount of predictor variables (~400 including all factors) a large network is constructed: (200, 200, 200). However, the model did not perform as well as the smaller network suggesting the possibility that the additional variables only added noise.
+
+*`r tbls(name = "z.dl_full_mod_results", "Large neural network model performance")`*
+
+```{r, echo=F, eval=T}
+z.dl_full.result <- data.frame(row.names = c("Benchmark", "Model"), train = c(benchmark.train.mae, z.dl.train.full.mae), test = c(benchmark.test.mae, z.dl.test.full.mae))
+names(z.dl_full.result) <- c("Training MAE", "Test MAE")
+knitr::kable(round(z.dl_full.result,4))
+```
+
+```{r overall.results.zillow, echo=F, eval=F}
+
+nm <- 6
+overall_results_z <- data.frame(classifier = character(nm), trainmae = character(nm), testmae = character(nm), notes = character(nm), stringsAsFactors = F)
+
+#Benchmark using mean
+overall_results_z$classifier[1] <- "Benchmark using training mean"
+overall_results_z$trainmae[1] <- round(benchmark.train.mae,4)
+overall_results_z$testmae[1] <- round(benchmark.test.mae,4)
+overall_results_z$notes[1] <- "NA"
+
+#Multiple regression
+overall_results_z$classifier[2] <- "Multiple regression after subsetting"
+overall_results_z$trainmae[2] <- round(lin.train.mae,4)
+overall_results_z$testmae[2] <- round(lin.test.mae,4)
+overall_results_z$notes[2] <- "16 predictors used"
+
+#Ridge regression
+overall_results_z$classifier[3] <- "Ridge regression"
+overall_results_z$trainmae[3] <- round(ridge.train.mae,4)
+overall_results_z$testmae[3] <- round(ridge.test.mae,4)
+overall_results_z$notes[3] <- "Lambda chosen at one standard error"
+
+#Random forest
+overall_results_z$classifier[4] <- "Random forest"
+overall_results_z$trainmae[4] <- round(z.rf.train.mae,4)
+overall_results_z$testmae[4] <- round(z.rf.test.mae,4)
+overall_results_z$notes[4] <- "200 trees, 3 minimum observations at leaves"
+
+#Neural network 1
+overall_results_z$classifier[5] <- "Neural network 1"
+overall_results_z$trainmae[5] <- round(z.dl.train.mae,4)
+overall_results_z$testmae[5] <- round(z.dl.test.mae,4)
+overall_results_z$notes[5] <- "16 subset predictors; (12, 12, 12); Rectifier with dropout"
+
+#Neural network 2
+overall_results_z$classifier[6] <- "Neural network 2"
+overall_results_z$trainmae[6] <- round(z.dl.train.full.mae,4)
+overall_results_z$testmae[6] <- round(z.dl.test.full.mae,4)
+overall_results_z$notes[6] <- "All predictors; (200, 200, 200); Rectifier with dropout"
+
+saveRDS(overall_results_z, "output/overall_results_z.rds")
+
+```
+
+##Conclusion
+
+The data-set was challenging to work with, only allowing the ability to detect extremely small improvements - the Zillow model has been developed over the course of at least ten years by multiple data scientists. However, it is encouraging that some improvement possibility was detected with just a linear regression. In order to improve these results, the following next steps are suggested:
+
+1. Add external data
+2. Impute missing values
+3. Add interactions between variables
+4. Add quadratic variables
+5. Try additional regression models
+
+#References
